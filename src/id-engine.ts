@@ -58,3 +58,43 @@ export class IdEngine {
 		return id;
 	}
 }
+
+/**
+ * Manages the vault-wide cache of existing `🆔` IDs.
+ *
+ * Delegates to {@link IdEngine.collectAllIds} for scanning and exposes
+ * the mutable set for use by {@link IndentationHandler}.
+ */
+export class IdCache {
+	private readonly idEngine: IdEngine;
+	private ids: Set<string> = new Set();
+
+	constructor(idEngine: IdEngine) {
+		this.idEngine = idEngine;
+	}
+
+	/**
+	 * Rebuilds the cache from scratch using an array of file contents.
+	 * Clears any previously cached IDs.
+	 */
+	buildFromContents(contents: string[]): void {
+		this.ids.clear();
+		for (const content of contents) {
+			for (const id of this.idEngine.collectAllIds(content)) {
+				this.ids.add(id);
+			}
+		}
+	}
+
+	/** Adds any new IDs found in a single file's content to the cache. */
+	updateFromContent(content: string): void {
+		for (const id of this.idEngine.collectAllIds(content)) {
+			this.ids.add(id);
+		}
+	}
+
+	/** Returns the mutable set of cached IDs. */
+	getIds(): Set<string> {
+		return this.ids;
+	}
+}

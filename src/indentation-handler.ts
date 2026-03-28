@@ -96,3 +96,25 @@ export class IndentationHandler {
 		editor.setLine(lineIndex, childLine);
 	}
 }
+
+/**
+ * Orchestrates processing all lines in an editor.
+ *
+ * Iterates over every line and delegates to {@link IndentationHandler.processLine}.
+ * Extracted from main.ts so the iteration logic is testable and mutation-covered.
+ */
+export class EditorProcessor {
+	private readonly handler: IndentationHandler;
+
+	constructor(handler: IndentationHandler) {
+		this.handler = handler;
+	}
+
+	/** Processes every line in the editor for dependency linking. */
+	processAllLines(editor: EditorLike, existingIds: Set<string>): void {
+		const lineCount = editor.lineCount();
+		for (let i = 0; i < lineCount; i++) {
+			this.handler.processLine(editor, i, existingIds);
+		}
+	}
+}
