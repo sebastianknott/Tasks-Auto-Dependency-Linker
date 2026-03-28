@@ -23,13 +23,53 @@ The parent task (`Build backend`) is now **blocked** by the child task (`Design 
 
 ### Outdenting
 
-When you outdent a task, the dependency on the old parent is removed. If a new parent exists at the new indentation level, a new dependency is created automatically.
+When you outdent a task, the plugin automatically cleans up stale markers:
+
+1. The `⛔` reference to the child is removed from the former parent
+2. If the task is re-indented under a new parent, a `⛔` is added to that new parent
+3. If no task in the document references the child's `🆔` any more, the `🆔` is removed too
+
+```markdown
+<!-- Before: child is indented under "Build backend" -->
+- [ ] Build backend ⛔ abc123
+	- [ ] Design API schema 🆔 abc123
+
+<!-- After outdenting "Design API schema" to root level -->
+- [ ] Build backend
+- [ ] Design API schema
+```
+
+Moving a task from one parent to another is handled seamlessly:
+
+```markdown
+<!-- Before: child is under "Build backend" -->
+- [ ] Build backend ⛔ abc123
+	- [ ] Design API schema 🆔 abc123
+- [ ] Write tests
+
+<!-- After: the plugin moves the ⛔ to "Write tests" -->
+- [ ] Build backend
+- [ ] Write tests ⛔ abc123
+	- [ ] Design API schema 🆔 abc123
+```
+
+```markdown
+<!-- Before: child is under "Build backend" -->
+- [ ] Write tests ⛔ abc444
+    - [ ] Build backend 🆔 abc444 ⛔ abc123
+        - [ ] Design API schema 🆔 abc123
+
+<!-- After: the plugin moves the ⛔ to "Write tests" -->
+- [ ] Write tests ⛔ abc444,abc123
+    - [ ] Build backend 🆔 abc444
+    - [ ] Design API schema 🆔 abc123
+```
 
 ### Rules
 
 - **Parent-child only.** Only direct parent-child relationships are tracked. Siblings are independent.
 - **Non-task lines are ignored.** Plain text, bullets without checkboxes, and headings are never modified.
-- **Existing IDs are preserved.** The plugin never removes a `🆔` marker. Manual `⛔` markers pointing to other tasks are also left intact.
+- **Automatic cleanup.** Orphaned `🆔` markers (not referenced by any `⛔`) and stale `⛔` markers (pointing to tasks that are no longer children) are removed automatically.
 - **Vault-wide unique IDs.** Generated IDs are 6-character lowercase alphanumeric strings, unique across your entire vault.
 
 ## Installation
