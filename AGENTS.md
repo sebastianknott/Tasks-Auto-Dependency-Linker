@@ -41,6 +41,7 @@ Always use the defined npm scripts instead of invoking tools directly:
 - `npm run build` — type-check and build for production
 - `npm run dev` — start esbuild in watch mode
 - `npm run lint` — run ESLint
+- `npm run check` — run all CI checks locally (lint, type-check, test, build)
 
 ## Obsidian Plugin Development
 

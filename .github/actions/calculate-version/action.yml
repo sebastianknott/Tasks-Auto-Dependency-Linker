@@ -1,0 +1,32 @@
+name: 'Calculate Next Version'
+description: 'Calculate next semantic version based on bump type'
+inputs:
+  bump:
+    description: 'Type of version bump (patch, minor, major)'
+    required: true
+  prefix:
+    description: 'Version prefix'
+    required: false
+    default: ''
+  github-token:
+    description: 'GitHub token for creating tags'
+    required: true
+
+outputs:
+  version:
+    description: 'New version tag (e.g., 1.2.3)'
+    value: ${{ steps.semver.outputs.version_tag }}
+  version-number:
+    description: 'New version without prefix (e.g., 1.2.3)'
+    value: ${{ steps.semver.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Calculate semver
+      id: semver
+      uses: zwaldowski/semver-release-action@v4
+      with:
+        bump: ${{ inputs.bump }}
+        github_token: ${{ inputs.github-token }}
+        prefix: ${{ inputs.prefix }}

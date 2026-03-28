@@ -1,0 +1,21 @@
+name: 'Check PR Labels'
+description: 'Validate PR has exactly one version bump label'
+inputs:
+  allowed-labels:
+    description: 'Comma-separated list of allowed labels'
+    required: false
+    default: 'patch, minor, major'
+  count:
+    description: 'Required number of labels'
+    required: false
+    default: '1'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check required labels
+      uses: mheap/github-action-required-labels@v5
+      with:
+        mode: exactly
+        count: ${{ inputs.count }}
+        labels: ${{ inputs.allowed-labels }}

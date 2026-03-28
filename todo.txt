@@ -1,6 +1,3 @@
-(A) Create eslint.config.mts with eslint-plugin-obsidianmd +scaffolding @dev
-(A) Create version-bump.mjs, versions.json, .editorconfig, .npmrc +scaffolding @dev
-(A) Implement src/task-parser.ts: TASK_REGEX, ID_REGEX, DEP_REGEX, isTaskLine, getIndentLevel, getTaskId, getTaskDependencies, addIdToLine, addDependencyToLine, removeDependencyFromLine +core @dev
 (A) Implement src/id-engine.ts: generateId, collectAllIds (vault-wide), generateUniqueId, incremental ID cache via vault modify event +core @dev
 (A) Implement src/indentation-handler.ts: indent state tracking per editor, parent search, auto add/remove of blocked markers, editor.transaction wrapping +core @dev
 (A) Implement src/utils.ts: debounce helper 300ms +core @dev
@@ -9,5 +6,5 @@
 (B) Edge cases: ignore non-task lines, handle multi-level outdent, preserve manually set blocked markers +stability @review
 (B) Test compatibility with BRAT plugin for GitHub URL installation +stability @review
 (B) Write README.md with documentation and usage examples +docs @review
-(C) Create .github/workflows/release.yml for automated GitHub release on tag push +release @deploy
 (C) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy
+(A) Implement src/task-parser.ts: TASK_REGEX, ID_REGEX, DEP_REGEX, isTaskLine, getIndentLevel, getTaskId, getTaskDependencies, addIdToLine, addDependencyToLine, removeDependencyFromLine +core @dev

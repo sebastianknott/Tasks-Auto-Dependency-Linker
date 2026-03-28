@@ -1,0 +1,187 @@
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  ci:
+    name: Run CI
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+      
+      - name: Run checks
+        run: npm run check
+  
+  get-bump-type:
+    name: Determine Version Bump Type
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      bump: ${{ steps.extract-label.outputs.bump }}
+      has-bump: ${{ steps.extract-label.outputs.has-bump }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Find most recent merged PR and extract label
+        id: extract-label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commit = context.payload.head_commit;
+            if (!commit) {
+              console.log('No commit found - this might be a direct push');
+              core.setOutput('has-bump', 'false');
+              return;
+            }
+            
+            let prNumber = null;
+            let mergedPR = null;
+            
+            // Method 1: Extract PR number from commit message (works for squash & merge)
+            // Squash merge format: "title (#123)" or "title (#123)\n\nbody"
+            const prMatch = commit.message.match(/\(#(\d+)\)/);
+            if (prMatch) {
+              prNumber = parseInt(prMatch[1], 10);
+              console.log(`Found PR number ${prNumber} in commit message`);
+            }
+            
+            // Method 2: Try API call (works for merge commits and rebase)
+            if (!prNumber) {
+              try {
+                const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  commit_sha: commit.id
+                });
+                
+                if (prs.length > 0) {
+                  const merged = prs.find(pr => pr.merged_at);
+                  if (merged) {
+                    prNumber = merged.number;
+                    console.log(`Found PR #${prNumber} via API`);
+                  }
+                }
+              } catch (error) {
+                console.log(`API call failed: ${error.message}`);
+              }
+            }
+            
+            // If no PR found, this is a direct push
+            if (!prNumber) {
+              console.log('No PR found for this commit - direct push detected');
+              core.setOutput('has-bump', 'false');
+              return;
+            }
+            
+            // Fetch the PR details to get labels
+            try {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              
+              if (!pr.merged_at) {
+                console.log(`PR #${prNumber} is not merged`);
+                core.setOutput('has-bump', 'false');
+                return;
+              }
+              
+              mergedPR = pr;
+              console.log(`Found merged PR #${mergedPR.number}: ${mergedPR.title}`);
+            } catch (error) {
+              console.log(`Failed to fetch PR #${prNumber}: ${error.message}`);
+              core.setOutput('has-bump', 'false');
+              return;
+            }
+            
+            // Extract version bump label
+            const labels = mergedPR.labels.map(l => l.name);
+            const bumpLabels = ['patch', 'minor', 'major'];
+            const bumpLabel = labels.find(l => bumpLabels.includes(l));
+            
+            if (!bumpLabel) {
+              console.log(`No version bump label found on PR #${prNumber}`);
+              core.setOutput('has-bump', 'false');
+              return;
+            }
+            
+            console.log(`Version bump type: ${bumpLabel}`);
+            core.setOutput('bump', bumpLabel);
+            core.setOutput('has-bump', 'true');
+  
+  calculate-version:
+    name: Calculate Next Version
+    needs: get-bump-type
+    if: needs.get-bump-type.outputs.has-bump == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version-number: ${{ steps.version.outputs.version-number }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Calculate next version
+        id: version
+        uses: ./.github/actions/calculate-version
+        with:
+          bump: ${{ needs.get-bump-type.outputs.bump }}
+          prefix: ''
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+  
+  create-release:
+    name: Create GitHub Release
+    needs: [calculate-version, ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build plugin
+        run: npm run build
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.calculate-version.outputs.version }}
+          name: ${{ needs.calculate-version.outputs.version }}
+          generate_release_notes: true
+          token: ${{ secrets.TOKEN_ALL_ACCESS }}
+          files: |
+            main.js
+            manifest.json
+            styles.css
