@@ -6,8 +6,8 @@ Automatically manage [Obsidian Tasks](https://publish.obsidian.md/tasks/) depend
 
 When you indent a task beneath another task, the plugin automatically:
 
-1. Assigns a unique ID to the parent task (if it doesn't have one)
-2. Adds a dependency marker to the child task pointing to that parent
+1. Assigns a unique ID to the child task (if it doesn't have one)
+2. Adds a dependency marker to the parent task pointing to that child
 
 ```markdown
 <!-- Before indenting -->
@@ -15,8 +15,8 @@ When you indent a task beneath another task, the plugin automatically:
 - [ ] Design API schema
 
 <!-- After indenting "Design API schema" under "Build backend" -->
-- [ ] Build backend 🆔 abc123
-	- [ ] Design API schema ⛔ abc123
+- [ ] Build backend ⛔ abc123
+	- [ ] Design API schema 🆔 abc123
 ```
 
 The parent task (`Build backend`) is now **blocked** by the child task (`Design API schema`) using the [Obsidian Tasks](https://publish.obsidian.md/tasks/) dependency syntax.
@@ -73,7 +73,3 @@ npm test            # Run unit tests + mutation testing (StrykerJS)
 npm run lint        # Run ESLint
 npm run check       # Run all CI checks locally
 ```
-
-## License
-
-[MIT](LICENSE)
