@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { IndentationHandler } from '../src/indentation-handler';
+import { IndentationHandler, EditorProcessor } from '../src/indentation-handler';
 import { TaskParser, DEFAULT_INDENT_CONFIG } from '../src/task-parser';
 import { IdEngine } from '../src/id-engine';
 
@@ -270,5 +270,100 @@ describe('IndentationHandler', () => {
 			// Old dep preserved
 			expect(lines[1]).toContain('\u26D4 oldid1');
 		});
+	});
+});
+
+describe('EditorProcessor', () => {
+	const parser = new TaskParser(DEFAULT_INDENT_CONFIG);
+	const idEngine = new IdEngine();
+
+	it('processes all lines in the editor', () => {
+		const handler = new IndentationHandler(parser, idEngine);
+		const processor = new EditorProcessor(handler);
+		const lines = [
+			'- [ ] Parent',
+			'\t- [ ] Child',
+		];
+		const editor = createMockEditor(lines);
+		const existingIds = new Set<string>();
+
+		processor.processAllLines(editor, existingIds);
+
+		// Parent should have an ID
+		expect(lines[0]).toMatch(/🆔 [a-z0-9]{6}/);
+		// Child should have a dependency
+		const parentId = lines[0]!.match(/🆔\s([a-z0-9]{6})/)![1]!;
+		expect(lines[1]).toContain(`⛔ ${parentId}`);
+	});
+
+	it('does nothing for an empty editor', () => {
+		const handler = new IndentationHandler(parser, idEngine);
+		const processor = new EditorProcessor(handler);
+		const lines: string[] = [];
+		const editor = createMockEditor(lines);
+		const existingIds = new Set<string>();
+
+		processor.processAllLines(editor, existingIds);
+
+		expect(editor.setLine).not.toHaveBeenCalled();
+	});
+
+	it('processes a multi-level hierarchy', () => {
+		const handler = new IndentationHandler(parser, idEngine);
+		const processor = new EditorProcessor(handler);
+		const lines = [
+			'- [ ] Grandparent',
+			'\t- [ ] Parent',
+			'\t\t- [ ] Child',
+		];
+		const editor = createMockEditor(lines);
+		const existingIds = new Set<string>();
+
+		processor.processAllLines(editor, existingIds);
+
+		// Grandparent should have an ID (from parent linking)
+		expect(lines[0]).toMatch(/🆔 [a-z0-9]{6}/);
+		// Parent should have an ID (from child linking) and a dep on grandparent
+		expect(lines[1]).toMatch(/🆔 [a-z0-9]{6}/);
+		const grandparentId = lines[0]!.match(/🆔\s([a-z0-9]{6})/)![1]!;
+		expect(lines[1]).toContain(`⛔ ${grandparentId}`);
+		// Child should have a dep on parent
+		const parentId = lines[1]!.match(/🆔\s([a-z0-9]{6})/)![1]!;
+		expect(lines[2]).toContain(`⛔ ${parentId}`);
+	});
+
+	it('calls processLine exactly lineCount times', () => {
+		const handler = new IndentationHandler(parser, idEngine);
+		const spy = vi.spyOn(handler, 'processLine');
+		const processor = new EditorProcessor(handler);
+		const lines = [
+			'- [ ] Task A',
+			'- [ ] Task B',
+			'\t- [ ] Task C',
+		];
+		const editor = createMockEditor(lines);
+
+		processor.processAllLines(editor, new Set());
+
+		expect(spy).toHaveBeenCalledTimes(3);
+		spy.mockRestore();
+	});
+
+	it('skips non-task lines without modifying them', () => {
+		const handler = new IndentationHandler(parser, idEngine);
+		const processor = new EditorProcessor(handler);
+		const lines = [
+			'# Heading',
+			'- [ ] Root task',
+			'Some text',
+		];
+		const editor = createMockEditor(lines);
+		const existingIds = new Set<string>();
+
+		processor.processAllLines(editor, existingIds);
+
+		expect(lines[0]).toBe('# Heading');
+		expect(lines[1]).toBe('- [ ] Root task');
+		expect(lines[2]).toBe('Some text');
 	});
 });

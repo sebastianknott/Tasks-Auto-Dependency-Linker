@@ -24,6 +24,7 @@ data.json
 # Stryker mutation testing
 reports/
 .stryker-incremental.json
+.stryker-tmp/
 
 # Todo and done lists
 todo.txt.bak

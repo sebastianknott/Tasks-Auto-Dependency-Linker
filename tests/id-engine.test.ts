@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { IdEngine } from '../src/id-engine';
+import { IdEngine, IdCache } from '../src/id-engine';
 
 describe('IdEngine', () => {
 	describe('generateId', () => {
@@ -109,6 +109,70 @@ describe('IdEngine', () => {
 			expect(spy).toHaveBeenCalledTimes(2);
 
 			spy.mockRestore();
+		});
+	});
+});
+
+describe('IdCache', () => {
+	describe('buildFromContents', () => {
+		it('returns an empty set for an empty contents array', () => {
+			const cache = new IdCache(new IdEngine());
+			cache.buildFromContents([]);
+			expect(cache.getIds().size).toBe(0);
+		});
+
+		it('collects IDs from a single file content', () => {
+			const cache = new IdCache(new IdEngine());
+			cache.buildFromContents(['- [ ] Task \u{1F194} abc123']);
+			expect(cache.getIds()).toEqual(new Set(['abc123']));
+		});
+
+		it('collects IDs from multiple file contents', () => {
+			const cache = new IdCache(new IdEngine());
+			cache.buildFromContents([
+				'- [ ] Task A \u{1F194} aaa111',
+				'- [ ] Task B \u{1F194} bbb222\n- [ ] Task C \u{1F194} ccc333',
+			]);
+			expect(cache.getIds()).toEqual(new Set(['aaa111', 'bbb222', 'ccc333']));
+		});
+
+		it('clears previous IDs before rebuilding', () => {
+			const cache = new IdCache(new IdEngine());
+			cache.buildFromContents(['- [ ] Task \u{1F194} old111']);
+			cache.buildFromContents(['- [ ] Task \u{1F194} new222']);
+			expect(cache.getIds()).toEqual(new Set(['new222']));
+			expect(cache.getIds().has('old111')).toBe(false);
+		});
+	});
+
+	describe('updateFromContent', () => {
+		it('adds new IDs to the existing cache', () => {
+			const cache = new IdCache(new IdEngine());
+			cache.buildFromContents(['- [ ] Task \u{1F194} aaa111']);
+			cache.updateFromContent('- [ ] Task \u{1F194} bbb222');
+			expect(cache.getIds()).toEqual(new Set(['aaa111', 'bbb222']));
+		});
+
+		it('does nothing for content without IDs', () => {
+			const cache = new IdCache(new IdEngine());
+			cache.buildFromContents(['- [ ] Task \u{1F194} aaa111']);
+			cache.updateFromContent('- [ ] No ID here');
+			expect(cache.getIds()).toEqual(new Set(['aaa111']));
+		});
+
+		it('works on an empty cache', () => {
+			const cache = new IdCache(new IdEngine());
+			cache.updateFromContent('- [ ] Task \u{1F194} abc123');
+			expect(cache.getIds()).toEqual(new Set(['abc123']));
+		});
+	});
+
+	describe('getIds', () => {
+		it('returns the internal set (same reference)', () => {
+			const cache = new IdCache(new IdEngine());
+			const ids1 = cache.getIds();
+			const ids2 = cache.getIds();
+			expect(ids1).toBe(ids2);
 		});
 	});
 });

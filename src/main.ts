@@ -1,22 +1,21 @@
 import { Plugin, MarkdownView, TFile } from 'obsidian';
 import { TaskParser } from './task-parser';
 import type { IndentConfig } from './task-parser';
-import { IdEngine } from './id-engine';
-import { IndentationHandler } from './indentation-handler';
+import { IdEngine, IdCache } from './id-engine';
+import { IndentationHandler, EditorProcessor } from './indentation-handler';
 import { Debounce } from './utils';
 
 /**
  * Tasks Auto-Dependency Linker — Obsidian Plugin.
  *
- * Automatically manages task dependencies (`🆔` / `⛔` markers) based on
- * indentation. Indent a task = block its parent; outdent = unblock.
+ * Thin shell that wires Obsidian events to the extracted, testable classes.
+ * All logic lives in TaskParser, IdEngine, IdCache, IndentationHandler,
+ * EditorProcessor, and Debounce.
  */
 export default class TasksAutoDependencyLinker extends Plugin {
-	private parser!: TaskParser;
-	private idEngine!: IdEngine;
-	private handler!: IndentationHandler;
 	private debounce!: Debounce;
-	private existingIds: Set<string> = new Set();
+	private idCache!: IdCache;
+	private processor!: EditorProcessor;
 
 	async onload(): Promise<void> {
 		const vault = this.app.vault as unknown as {
@@ -28,33 +27,26 @@ export default class TasksAutoDependencyLinker extends Plugin {
 			tabSize: (vault.getConfig('tabSize') as number | undefined) ?? 4,
 		};
 
-		this.parser = new TaskParser(indentConfig);
-		this.idEngine = new IdEngine();
-		this.handler = new IndentationHandler(this.parser, this.idEngine);
+		const parser = new TaskParser(indentConfig);
+		const idEngine = new IdEngine();
+		const handler = new IndentationHandler(parser, idEngine);
 
-		this.debounce = new Debounce(() => {
-			this.processActiveEditor();
-		});
+		this.idCache = new IdCache(idEngine);
+		this.processor = new EditorProcessor(handler);
+		this.debounce = new Debounce(() => this.processActiveEditor());
 
-		// Build initial ID cache once the workspace layout is ready
-		this.app.workspace.onLayoutReady(() => {
-			void this.buildIdCache();
-		});
+		this.app.workspace.onLayoutReady(() => void this.buildIdCache());
 
-		// Keep ID cache up to date when files change
 		this.registerEvent(
 			this.app.vault.on('modify', (file: TFile) => {
 				if (file.extension === 'md') {
-					void this.updateIdCacheForFile(file);
+					void this.updateCacheForFile(file);
 				}
 			}),
 		);
 
-		// React to editor changes (debounced)
 		this.registerEvent(
-			this.app.workspace.on('editor-change', () => {
-				this.debounce.call();
-			}),
+			this.app.workspace.on('editor-change', () => this.debounce.call()),
 		);
 	}
 
@@ -62,38 +54,25 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		this.debounce?.cancel();
 	}
 
-	/** Scans all markdown files in the vault to build the full ID cache. */
 	private async buildIdCache(): Promise<void> {
-		this.existingIds.clear();
 		const files = this.app.vault.getMarkdownFiles();
+		const contents: string[] = [];
 		for (const file of files) {
-			const content = await this.app.vault.cachedRead(file);
-			for (const id of this.idEngine.collectAllIds(content)) {
-				this.existingIds.add(id);
-			}
+			contents.push(await this.app.vault.cachedRead(file));
 		}
+		this.idCache.buildFromContents(contents);
 	}
 
-	/** Updates the ID cache for a single file after modification. */
-	private async updateIdCacheForFile(file: TFile): Promise<void> {
+	private async updateCacheForFile(file: TFile): Promise<void> {
 		const content = await this.app.vault.cachedRead(file);
-		for (const id of this.idEngine.collectAllIds(content)) {
-			this.existingIds.add(id);
-		}
+		this.idCache.updateFromContent(content);
 	}
 
-	/** Processes all visible lines in the active editor. */
 	private processActiveEditor(): void {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) {
 			return;
 		}
-
-		const editor = view.editor;
-		const lineCount = editor.lineCount();
-
-		for (let i = 0; i < lineCount; i++) {
-			this.handler.processLine(editor, i, this.existingIds);
-		}
+		this.processor.processAllLines(view.editor, this.idCache.getIds());
 	}
 }
