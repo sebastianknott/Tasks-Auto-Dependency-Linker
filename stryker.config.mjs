@@ -11,7 +11,6 @@ export default {
 		'!src/**/*.test.ts',
 		'!src/**/*.spec.ts',
 		'!src/**/*.d.ts',
-		'!src/main.ts', // Thin Obsidian shell — only API wiring, no logic to mutate
 	],
 	reporters: ['html', 'clear-text', 'progress'],
 	thresholds: {

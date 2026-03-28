@@ -1,49 +1,73 @@
 /**
  * Mock of the obsidian module for testing.
  * The real `obsidian` npm package is type-only (no runtime JS).
- * This provides minimal runtime stubs so modules that import from
- * 'obsidian' can be loaded in vitest.
+ * This provides runtime stubs that capture event registrations and
+ * allow full plugin instantiation in vitest.
  */
 
 export class Component {
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	registerEvent(_eventRef: unknown): void {
-		// stub
+	_registeredEvents: unknown[] = [];
+
+	registerEvent(eventRef: unknown): void {
+		this._registeredEvents.push(eventRef);
+	}
+}
+
+/**
+ * Event registration helper that captures callbacks.
+ * Each `on(name, cb)` call stores `{ name, cb }` so tests can retrieve
+ * and invoke the callbacks.
+ */
+class EventEmitterStub {
+	_handlers: Array<{ name: string; cb: (...args: unknown[]) => unknown }> = [];
+
+	on(name: string, cb: (...args: unknown[]) => unknown) {
+		const ref = { name, cb };
+		this._handlers.push(ref);
+		return ref;
+	}
+
+	/** Retrieve all handlers registered for a given event name. */
+	getHandlers(name: string) {
+		return this._handlers.filter((h) => h.name === name);
 	}
 }
 
 export class Plugin extends Component {
-	app: Record<string, unknown> = {
-		vault: {
-			getConfig: () => undefined,
-			getMarkdownFiles: () => [],
-			cachedRead: async () => '',
-			on: () => ({ /* EventRef stub */ }),
-		},
-		workspace: {
-			on: () => ({ /* EventRef stub */ }),
-			onLayoutReady: (cb: () => void) => cb(),
-		},
+	_vaultEmitter = new EventEmitterStub();
+	_workspaceEmitter = new EventEmitterStub();
+	_layoutReadyCb: (() => void) | null = null;
+
+	app = {
+		vault: Object.assign(this._vaultEmitter, {
+			getConfig: (_key: string): unknown => undefined,
+			getMarkdownFiles: (): TFile[] => [],
+			cachedRead: async (_file: TFile): Promise<string> => '',
+		}),
+		workspace: Object.assign(this._workspaceEmitter, {
+			onLayoutReady: (cb: () => void) => {
+				(this as Plugin)._layoutReadyCb = cb;
+			},
+			getActiveViewOfType: (_type: unknown): unknown => null,
+		}),
 	};
 
 	async onload(): Promise<void> {
-		// stub
+		// stub — overridden by subclass
 	}
 
 	onunload(): void {
-		// stub
+		// stub — overridden by subclass
 	}
 
 	registerInterval(_id: number): number {
 		return 0;
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	addCommand(_command: unknown): unknown {
 		return {};
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	addSettingTab(_settingTab: unknown): void {
 		// stub
 	}
@@ -52,7 +76,6 @@ export class Plugin extends Component {
 		return {};
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	async saveData(_data: unknown): Promise<void> {
 		// stub
 	}
@@ -87,7 +110,6 @@ export class TFile {
 }
 
 export class Notice {
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	constructor(_message: string) {
 		// stub
 	}
