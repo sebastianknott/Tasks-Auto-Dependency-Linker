@@ -1,4 +1,1 @@
-(B) Memory check: verify all listeners use this.registerEvent for auto-cleanup +stability @review
-(B) Test compatibility with BRAT plugin for GitHub URL installation +stability @review
-(B) Write README.md with documentation and usage examples +docs @review
 (C) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy
