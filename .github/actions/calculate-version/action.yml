@@ -25,7 +25,7 @@ runs:
   steps:
     - name: Calculate semver
       id: semver
-      uses: zwaldowski/semver-release-action@v4
+      uses: zwaldowski/semver-release-action@v6
       with:
         bump: ${{ inputs.bump }}
         github_token: ${{ inputs.github-token }}
