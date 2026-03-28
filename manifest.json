@@ -4,7 +4,7 @@
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Automatically manage Obsidian Tasks dependencies based on indentation. Indent = block parent; outdent = unblock.",
-	"author": "DoomHammer",
-	"authorUrl": "https://github.com/DoomHammer",
+	"author": "Sebastian Knott",
+	"authorUrl": "https://github.com/sebastianknott",
 	"isDesktopOnly": false
 }

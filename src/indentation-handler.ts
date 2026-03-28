@@ -63,7 +63,7 @@ export class IndentationHandler {
 
 	/**
 	 * Processes a single line: if it is an indented task with a parent,
-	 * ensures the parent has an `🆔` and the child has a `⛔` for that ID.
+	 * ensures the child has a `🆔` and the parent has a `⛔` for that ID.
 	 */
 	processLine(
 		editor: EditorLike,
@@ -81,19 +81,19 @@ export class IndentationHandler {
 			return;
 		}
 
-		let parentLine = editor.getLine(parentIndex);
-		let parentId = this.parser.getTaskId(parentLine);
+		let childLine = editor.getLine(lineIndex);
+		let childId = this.parser.getTaskId(childLine);
 
-		if (!parentId) {
-			parentId = this.idEngine.generateUniqueId(existingIds);
-			parentLine = this.parser.addIdToLine(parentLine, parentId);
-			editor.setLine(parentIndex, parentLine);
-			existingIds.add(parentId);
+		if (!childId) {
+			childId = this.idEngine.generateUniqueId(existingIds);
+			childLine = this.parser.addIdToLine(childLine, childId);
+			editor.setLine(lineIndex, childLine);
+			existingIds.add(childId);
 		}
 
-		let childLine = editor.getLine(lineIndex);
-		childLine = this.parser.addDependencyToLine(childLine, parentId);
-		editor.setLine(lineIndex, childLine);
+		let parentLine = editor.getLine(parentIndex);
+		parentLine = this.parser.addDependencyToLine(parentLine, childId);
+		editor.setLine(parentIndex, parentLine);
 	}
 }
 
