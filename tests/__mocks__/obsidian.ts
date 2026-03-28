@@ -5,8 +5,26 @@
  * 'obsidian' can be loaded in vitest.
  */
 
-export class Plugin {
-	app: unknown = {};
+export class Component {
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	registerEvent(_eventRef: unknown): void {
+		// stub
+	}
+}
+
+export class Plugin extends Component {
+	app: Record<string, unknown> = {
+		vault: {
+			getConfig: () => undefined,
+			getMarkdownFiles: () => [],
+			cachedRead: async () => '',
+			on: () => ({ /* EventRef stub */ }),
+		},
+		workspace: {
+			on: () => ({ /* EventRef stub */ }),
+			onLayoutReady: (cb: () => void) => cb(),
+		},
+	};
 
 	async onload(): Promise<void> {
 		// stub
@@ -16,18 +34,16 @@ export class Plugin {
 		// stub
 	}
 
-	registerEvent(_eventRef: unknown): void {
-		// stub
-	}
-
 	registerInterval(_id: number): number {
 		return 0;
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	addCommand(_command: unknown): unknown {
 		return {};
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	addSettingTab(_settingTab: unknown): void {
 		// stub
 	}
@@ -36,6 +52,7 @@ export class Plugin {
 		return {};
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	async saveData(_data: unknown): Promise<void> {
 		// stub
 	}
@@ -63,7 +80,14 @@ export class MarkdownView {
 	editor: unknown = {};
 }
 
+export class TFile {
+	path = '';
+	name = '';
+	extension = 'md';
+}
+
 export class Notice {
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	constructor(_message: string) {
 		// stub
 	}

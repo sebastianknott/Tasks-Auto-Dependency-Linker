@@ -44,7 +44,8 @@ TDD is **non-negotiable** for this project. Every piece of logic must follow the
 
 - Every source file that has unit tests must also pass StrykerJS mutation testing.
 - After writing or changing tests, always run `npm test` (not just `npm run test:unit`) to verify that mutations are killed.
-- Surviving mutants indicate weak tests — fix them before moving on.
+- **100% mutation score is mandatory.** Every single surviving mutant must be killed — no exceptions, no "equivalent mutant" excuses. If a mutant survives, either strengthen the test or refactor the source code to eliminate the untestable branch. Do the extra work.
+- Surviving mutants indicate weak tests or redundant code — fix them before moving on.
 
 ## NPM Scripts
 
