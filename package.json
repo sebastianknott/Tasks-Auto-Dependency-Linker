@@ -1,0 +1,42 @@
+{
+	"name": "tasks-auto-dependency-linker",
+	"version": "1.0.0",
+	"description": "Automatically manage Obsidian Tasks dependencies based on indentation. Indent = block parent; outdent = unblock.",
+	"main": "main.js",
+	"type": "module",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"lint": "eslint .",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:mutation": "stryker run",
+		"test:mutation:incremental": "stryker run --incremental"
+	},
+	"keywords": [
+		"obsidian",
+		"tasks",
+		"dependencies",
+		"indentation"
+	],
+	"license": "MIT",
+	"devDependencies": {
+		"@eslint/js": "9.30.1",
+		"@stryker-mutator/core": "^9.6.0",
+		"@stryker-mutator/typescript-checker": "^9.6.0",
+		"@stryker-mutator/vitest-runner": "^9.6.0",
+		"@types/node": "^22.0.0",
+		"esbuild": "0.25.5",
+		"eslint-plugin-obsidianmd": "0.1.9",
+		"globals": "14.0.0",
+		"jiti": "2.6.1",
+		"tslib": "2.4.0",
+		"typescript": "^5.8.3",
+		"typescript-eslint": "8.35.1",
+		"vitest": "^3.2.1"
+	},
+	"dependencies": {
+		"obsidian": "latest"
+	}
+}

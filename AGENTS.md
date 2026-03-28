@@ -1,0 +1,47 @@
+# Project Agent Instructions
+
+## Task Management
+
+- Use `todo.sh` for all development stories and task tracking.
+- Before starting work, run `todo.sh -p list` to see current tasks.
+- Mark tasks in progress and completed using `todo.sh` as you work.
+- Never create or track TODOs inside markdown files. `todo.sh` is the single source of truth.
+
+## Test-Driven Development (Mandatory)
+
+TDD is **non-negotiable** for this project. Every piece of logic must follow the Red-Green-Refactor cycle:
+
+1. **Red:** Write a failing test first that describes the expected behavior.
+2. **Green:** Write the minimal code to make the test pass.
+3. **Refactor:** Clean up the implementation while keeping tests green.
+
+### Rules
+
+- Never write implementation code without a failing test that demands it.
+- Never skip ahead to implementation "because it's obvious." Write the test first.
+- Each function in `src/task-parser.ts`, `src/id-engine.ts`, `src/indentation-handler.ts`, and `src/utils.ts` must have corresponding tests.
+- Tests live in a `tests/` directory mirroring the `src/` structure.
+- Run the full test suite after every change to confirm nothing is broken.
+- If a bug is found, write a test that reproduces it before fixing it.
+
+### Test Scope
+
+- **Unit tests** for all pure functions (task-parser, id-engine, utils).
+- **Integration tests** for indentation-handler logic (mocked Editor API).
+- Edge cases must be covered: non-task lines, multi-level indent/outdent, manual markers, ID collisions.
+
+## NPM Scripts
+
+Always use the defined npm scripts instead of invoking tools directly:
+
+- `npm test` — run the test suite (vitest)
+- `npm run test:watch` — run tests in watch mode
+- `npm run test:mutation` — run mutation testing (StrykerJS)
+- `npm run test:mutation:incremental` — run mutation testing incrementally
+- `npm run build` — type-check and build for production
+- `npm run dev` — start esbuild in watch mode
+- `npm run lint` — run ESLint
+
+## Obsidian Plugin Development
+
+Load the `obsidian-plugin-dev` skill before doing any Obsidian plugin work. It contains all API references, guidelines, and best practices for this project.
