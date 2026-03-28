@@ -91,16 +91,100 @@ export class IndentationHandler {
 			existingIds.add(childId);
 		}
 
-		let parentLine = editor.getLine(parentIndex);
-		parentLine = this.parser.addDependencyToLine(parentLine, childId);
-		editor.setLine(parentIndex, parentLine);
+		const parentLine = editor.getLine(parentIndex);
+		const updatedParentLine = this.parser.addDependencyToLine(
+			parentLine,
+			childId,
+		);
+		if (updatedParentLine !== parentLine) {
+			editor.setLine(parentIndex, updatedParentLine);
+		}
+	}
+
+	/**
+	 * Builds a map of desired parent-child relationships from current
+	 * indentation. Returns a Map where key = child line index,
+	 * value = parent line index.
+	 */
+	buildRelationshipMap(lines: string[]): Map<number, number> {
+		const relationships = new Map<number, number>();
+		for (let i = 0; i < lines.length; i++) {
+			const parentIndex = this.findParentTask(lines, i);
+			if (parentIndex !== null) {
+				relationships.set(i, parentIndex);
+			}
+		}
+		return relationships;
+	}
+
+	/**
+	 * Collects the set of child IDs that should be `⛔`-referenced by
+	 * a given parent, based on the relationship map.
+	 */
+	getDesiredDepsForParent(
+		lines: string[],
+		parentIndex: number,
+		relationships: Map<number, number>,
+	): Set<string> {
+		const deps = new Set<string>();
+		for (const [childIdx, pIdx] of relationships) {
+			if (pIdx !== parentIndex) {
+				continue;
+			}
+			const childId = this.parser.getTaskId(lines[childIdx]!);
+			if (childId) {
+				deps.add(childId);
+			}
+		}
+		return deps;
+	}
+
+	/**
+	 * Removes `⛔` markers from a task line that are not in the desired
+	 * set of dependency IDs. Returns the updated line.
+	 */
+	removeStaleDeps(line: string, desiredDeps: Set<string>): string {
+		const currentDeps = this.parser.getTaskDependencies(line);
+		let result = line;
+		for (const dep of currentDeps) {
+			if (!desiredDeps.has(dep)) {
+				result = this.parser.removeDependencyFromLine(result, dep);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Returns true if the given ID is referenced as a `⛔` dependency
+	 * on any line in the provided array.
+	 */
+	isIdReferencedAsDep(lines: string[], id: string): boolean {
+		for (const line of lines) {
+			if (this.parser.getTaskDependencies(line).includes(id)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Returns the `🆔` from a line, or null. Delegates to {@link TaskParser}. */
+	getTaskId(line: string): string | null {
+		return this.parser.getTaskId(line);
+	}
+
+	/** Removes the `🆔` marker from a line. Delegates to {@link TaskParser}. */
+	removeIdFromLine(line: string): string {
+		return this.parser.removeIdFromLine(line);
 	}
 }
 
 /**
  * Orchestrates processing all lines in an editor.
  *
- * Iterates over every line and delegates to {@link IndentationHandler.processLine}.
+ * Uses a two-pass approach:
+ * 1. **Link pass**: adds `🆔` / `⛔` markers based on current indentation.
+ * 2. **Cleanup pass**: removes stale `⛔` from former parents and orphaned `🆔`.
+ *
  * Extracted from main.ts so the iteration logic is testable and mutation-covered.
  */
 export class EditorProcessor {
@@ -113,8 +197,45 @@ export class EditorProcessor {
 	/** Processes every line in the editor for dependency linking. */
 	processAllLines(editor: EditorLike, existingIds: Set<string>): void {
 		const lineCount = editor.lineCount();
+
+		// Pass 1: Link — add 🆔 / ⛔ markers based on indentation
 		for (let i = 0; i < lineCount; i++) {
 			this.handler.processLine(editor, i, existingIds);
+		}
+
+		// Read lines after pass 1
+		const lines: string[] = [];
+		for (let i = 0; i < lineCount; i++) {
+			lines.push(editor.getLine(i));
+		}
+
+		// Build desired relationships from current indentation
+		const relationships = this.handler.buildRelationshipMap(lines);
+
+		// Pass 2a: Remove stale ⛔ from each task line
+		for (let i = 0; i < lineCount; i++) {
+			const line = lines[i]!;
+			const desiredDeps = this.handler.getDesiredDepsForParent(
+				lines,
+				i,
+				relationships,
+			);
+			const cleaned = this.handler.removeStaleDeps(line, desiredDeps);
+			if (cleaned !== line) {
+				editor.setLine(i, cleaned);
+				lines[i] = cleaned;
+			}
+		}
+
+		// Pass 2b: Remove orphaned 🆔 (no ⛔ references it anywhere)
+		for (let i = 0; i < lineCount; i++) {
+			const line = lines[i]!;
+			const id = this.handler.getTaskId(line);
+			if (id && !this.handler.isIdReferencedAsDep(lines, id)) {
+				const cleaned = this.handler.removeIdFromLine(line);
+				editor.setLine(i, cleaned);
+				lines[i] = cleaned;
+			}
 		}
 	}
 }
