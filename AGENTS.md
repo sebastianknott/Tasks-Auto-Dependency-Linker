@@ -7,6 +7,16 @@
 - Mark tasks in progress and completed using `todo.sh` as you work.
 - Never create or track TODOs inside markdown files. `todo.sh` is the single source of truth.
 
+## Coding Style: Object-Oriented Programming (Mandatory)
+
+All source code in `src/` **must** use an object-oriented style:
+
+- **Classes over free functions.** Every module exposes one or more classes, not standalone `export function` declarations.
+- **Configuration via constructor injection.** Runtime settings (e.g. Obsidian vault config) are passed into the constructor and stored as `private readonly` fields.
+- **Static members for true constants.** Regex patterns and other compile-time constants live as `static readonly` on the class.
+- **Interfaces for configuration objects.** Use plain `interface` types (not classes) for option bags passed to constructors.
+- **No barrel re-exports of loose functions.** Consumers import the class and call methods on an instance.
+
 ## Test-Driven Development (Mandatory)
 
 TDD is **non-negotiable** for this project. Every piece of logic must follow the Red-Green-Refactor cycle:
@@ -19,7 +29,7 @@ TDD is **non-negotiable** for this project. Every piece of logic must follow the
 
 - Never write implementation code without a failing test that demands it.
 - Never skip ahead to implementation "because it's obvious." Write the test first.
-- Each function in `src/task-parser.ts`, `src/id-engine.ts`, `src/indentation-handler.ts`, and `src/utils.ts` must have corresponding tests.
+- Each public method in `src/task-parser.ts`, `src/id-engine.ts`, `src/indentation-handler.ts`, and `src/utils.ts` must have corresponding tests.
 - Tests live in a `tests/` directory mirroring the `src/` structure.
 - Run the full test suite after every change to confirm nothing is broken.
 - If a bug is found, write a test that reproduces it before fixing it.
