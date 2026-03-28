@@ -10,7 +10,7 @@
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
 		"test": "vitest run && stryker run",
-        "test:unit": "vitest run",
+		"test:unit": "vitest run",
 		"test:watch": "vitest",
 		"test:mutation": "stryker run",
 		"test:mutation:incremental": "stryker run --incremental",

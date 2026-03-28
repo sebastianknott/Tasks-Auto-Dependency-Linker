@@ -30,13 +30,20 @@ TDD is **non-negotiable** for this project. Every piece of logic must follow the
 - **Integration tests** for indentation-handler logic (mocked Editor API).
 - Edge cases must be covered: non-task lines, multi-level indent/outdent, manual markers, ID collisions.
 
+### Mutation Testing
+
+- Every source file that has unit tests must also pass StrykerJS mutation testing.
+- After writing or changing tests, always run `npm test` (not just `npm run test:unit`) to verify that mutations are killed.
+- Surviving mutants indicate weak tests — fix them before moving on.
+
 ## NPM Scripts
 
 Always use the defined npm scripts instead of invoking tools directly:
 
-- `npm test` — run the test suite (vitest)
-- `npm run test:watch` — run tests in watch mode
-- `npm run test:mutation` — run mutation testing (StrykerJS)
+- `npm test` — run the full test suite (vitest + StrykerJS mutation testing)
+- `npm run test:unit` — run unit tests only (vitest)
+- `npm run test:watch` — run unit tests in watch mode
+- `npm run test:mutation` — run mutation testing only (StrykerJS)
 - `npm run test:mutation:incremental` — run mutation testing incrementally
 - `npm run build` — type-check and build for production
 - `npm run dev` — start esbuild in watch mode

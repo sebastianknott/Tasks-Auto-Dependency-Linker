@@ -11,7 +11,6 @@ export default {
 		'!src/**/*.test.ts',
 		'!src/**/*.spec.ts',
 		'!src/**/*.d.ts',
-		'!src/main.ts',
 	],
 	reporters: ['html', 'clear-text', 'progress'],
 	thresholds: {
@@ -19,6 +18,7 @@ export default {
 		low: 60,
 		break: 50,
 	},
+	allowEmpty: true,
 	concurrency: 4,
 	cleanTempDir: 'always',
 };
