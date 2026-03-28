@@ -117,7 +117,7 @@ export class TaskParser {
 		}
 		const match = line.match(TaskParser.DEP_REGEX);
 		if (match) {
-			const insertAt = match.index! + match[0]!.length;
+			const insertAt = match.index! + match[0].length;
 			return (
 				line.substring(0, insertAt) +
 				`,${depId}` +
@@ -144,7 +144,7 @@ export class TaskParser {
 		const remaining = deps.filter((id) => id !== depId);
 		// Strip the ⛔ marker using the match position, preserving any suffix
 		const markerStart = match.index!;
-		const markerEnd = markerStart + match[0]!.length;
+		const markerEnd = markerStart + match[0].length;
 		const prefix = line.substring(0, markerStart).trimEnd();
 		const suffix = line.substring(markerEnd);
 		if (remaining.length === 0) {
