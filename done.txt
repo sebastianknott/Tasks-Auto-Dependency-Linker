@@ -1,6 +1,0 @@
-x 2026-03-28 Scaffold project: package.json, tsconfig.json, esbuild.config.mjs, manifest.json +scaffolding @dev
-x 2026-03-28 Create eslint.config.mts with eslint-plugin-obsidianmd +scaffolding @dev
-x 2026-03-28 Implement src/task-parser.ts: TASK_REGEX, ID_REGEX, DEP_REGEX, isTaskLine, getIndentLevel, getTaskId, getTaskDependencies, addIdToLine, addDependencyToLine, removeDependencyFromLine +core @dev
-x 2026-03-28 Create version-bump.mjs, versions.json, .editorconfig, .npmrc +scaffolding @dev
-x 2026-03-28 Create .github/workflows/ci.yml: run tests, linting, type-check, and build on push/PR +ci @dev
-x 2026-03-28 Create .github/workflows/release.yml for automated GitHub release on tag push +release @deploy

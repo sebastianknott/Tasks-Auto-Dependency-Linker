@@ -7,4 +7,3 @@
 (B) Test compatibility with BRAT plugin for GitHub URL installation +stability @review
 (B) Write README.md with documentation and usage examples +docs @review
 (C) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy
-(A) Implement src/task-parser.ts: TASK_REGEX, ID_REGEX, DEP_REGEX, isTaskLine, getIndentLevel, getTaskId, getTaskDependencies, addIdToLine, addDependencyToLine, removeDependencyFromLine +core @dev

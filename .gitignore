@@ -25,3 +25,4 @@ data.json
 reports/
 .stryker-incremental.json
 todo.txt.bak
+done.txt
