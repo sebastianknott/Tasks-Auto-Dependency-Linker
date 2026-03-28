@@ -1,0 +1,141 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { Debounce, DEFAULT_DEBOUNCE_DELAY } from '../src/utils';
+
+describe('Debounce', () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	describe('DEFAULT_DEBOUNCE_DELAY', () => {
+		it('is 300ms', () => {
+			expect(DEFAULT_DEBOUNCE_DELAY).toBe(300);
+		});
+	});
+
+	describe('constructor', () => {
+		it('creates an instance with a callback and default delay', () => {
+			const debounce = new Debounce(vi.fn());
+			expect(debounce).toBeInstanceOf(Debounce);
+		});
+
+		it('creates an instance with a custom delay', () => {
+			const debounce = new Debounce(vi.fn(), 500);
+			expect(debounce).toBeInstanceOf(Debounce);
+		});
+	});
+
+	describe('call', () => {
+		it('does not invoke the callback immediately', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback);
+
+			debounce.call();
+
+			expect(callback).not.toHaveBeenCalled();
+		});
+
+		it('invokes the callback after the default delay', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback);
+
+			debounce.call();
+			vi.advanceTimersByTime(300);
+
+			expect(callback).toHaveBeenCalledOnce();
+		});
+
+		it('invokes the callback after a custom delay', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback, 500);
+
+			debounce.call();
+			vi.advanceTimersByTime(499);
+			expect(callback).not.toHaveBeenCalled();
+
+			vi.advanceTimersByTime(1);
+			expect(callback).toHaveBeenCalledOnce();
+		});
+
+		it('resets the timer when called again within the delay', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback);
+
+			debounce.call();
+			vi.advanceTimersByTime(200);
+			debounce.call();
+			vi.advanceTimersByTime(200);
+
+			expect(callback).not.toHaveBeenCalled();
+
+			vi.advanceTimersByTime(100);
+			expect(callback).toHaveBeenCalledOnce();
+		});
+
+		it('only invokes the callback once after rapid calls', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback);
+
+			debounce.call();
+			debounce.call();
+			debounce.call();
+			debounce.call();
+			debounce.call();
+
+			vi.advanceTimersByTime(300);
+
+			expect(callback).toHaveBeenCalledOnce();
+		});
+
+		it('can fire multiple times if delay elapses between calls', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback);
+
+			debounce.call();
+			vi.advanceTimersByTime(300);
+			expect(callback).toHaveBeenCalledTimes(1);
+
+			debounce.call();
+			vi.advanceTimersByTime(300);
+			expect(callback).toHaveBeenCalledTimes(2);
+		});
+	});
+
+	describe('cancel', () => {
+		it('prevents the pending callback from firing', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback);
+
+			debounce.call();
+			debounce.cancel();
+			vi.advanceTimersByTime(300);
+
+			expect(callback).not.toHaveBeenCalled();
+		});
+
+		it('does nothing if no call is pending', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback);
+
+			debounce.cancel();
+			vi.advanceTimersByTime(300);
+
+			expect(callback).not.toHaveBeenCalled();
+		});
+
+		it('allows new calls after cancellation', () => {
+			const callback = vi.fn();
+			const debounce = new Debounce(callback);
+
+			debounce.call();
+			debounce.cancel();
+			debounce.call();
+			vi.advanceTimersByTime(300);
+
+			expect(callback).toHaveBeenCalledOnce();
+		});
+	});
+});
