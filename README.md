@@ -27,7 +27,7 @@ When you outdent a task, the plugin automatically cleans up stale markers:
 
 1. The `⛔` reference to the child is removed from the former parent
 2. If the task is re-indented under a new parent, a `⛔` is added to that new parent
-3. If no task in the document references the child's `🆔` any more, the `🆔` is removed too
+3. If no task anywhere in the vault references the child's `🆔` via a `⛔`, the `🆔` is removed too
 
 ```markdown
 <!-- Before: child is indented under "Build backend" -->
@@ -68,9 +68,11 @@ Moving a task from one parent to another is handled seamlessly:
 ### Rules
 
 - **Parent-child only.** Only direct parent-child relationships are tracked. Siblings are independent.
-- **Non-task lines are ignored.** Plain text, bullets without checkboxes, and headings are never modified.
-- **Automatic cleanup.** Orphaned `🆔` markers (not referenced by any `⛔`) and stale `⛔` markers (pointing to tasks that are no longer children) are removed automatically.
+- **List-scoped.** The plugin only manages dependencies between tasks in the same contiguous list. Lists separated by blank lines, headings, or non-list content are treated independently and never interfere with each other.
+- **Non-task lines are ignored.** Plain text, bullets without checkboxes, and headings are never modified. Non-task list items (plain bullets like `- item`) are part of the same list block but are not given dependency markers.
+- **Automatic cleanup.** Orphaned `🆔` markers (not referenced by any `⛔` in the entire vault) and stale `⛔` markers (pointing to tasks that are no longer children within the same list) are removed automatically. Cross-file and cross-list dependency references are always preserved.
 - **Vault-wide unique IDs.** Generated IDs are 6-character lowercase alphanumeric strings, unique across your entire vault.
+- **Broad ID compatibility.** The plugin generates lowercase alphanumeric IDs, but correctly parses and preserves IDs created by the Tasks plugin that contain uppercase letters, hyphens, underscores, or have different lengths.
 
 ## Installation
 
@@ -101,7 +103,7 @@ No configuration needed. The plugin reads your vault's indentation settings (tab
 
 ## Requirements
 
-- [Obsidian Tasks](https://publish.obsidian.md/tasks/) plugin must be installed for the `🆔` and `⛔` markers to function as dependencies.
+- [Obsidian Tasks](https://publish.obsidian.md/tasks/) plugin must be installed **and enabled**. The plugin automatically detects whether Tasks is active and disables itself silently if it is not.
 
 ## Development
 

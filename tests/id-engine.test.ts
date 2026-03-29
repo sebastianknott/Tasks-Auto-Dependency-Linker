@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { IdEngine, IdCache } from '../src/id-engine';
+import { IdEngine, IdCache, DepCache } from '../src/id-engine';
 
 describe('IdEngine', () => {
 	describe('generateId', () => {
@@ -64,6 +64,60 @@ describe('IdEngine', () => {
 			const content = '- [ ] Task without ID\n- [ ] Another task';
 			const ids = engine.collectAllIds(content);
 			expect(ids.size).toBe(0);
+		});
+	});
+
+	describe('collectAllDepIds', () => {
+		it('returns empty set when content has no deps', () => {
+			const engine = new IdEngine();
+			const deps = engine.collectAllDepIds('');
+			expect(deps.size).toBe(0);
+		});
+
+		it('returns empty set for content with only 🆔 markers', () => {
+			const engine = new IdEngine();
+			const deps = engine.collectAllDepIds('- [ ] Task 🆔 abc123');
+			expect(deps.size).toBe(0);
+		});
+
+		it('returns single dep ID from ⛔ marker', () => {
+			const engine = new IdEngine();
+			const deps = engine.collectAllDepIds('- [ ] Task ⛔ abc123');
+			expect(deps).toEqual(new Set(['abc123']));
+		});
+
+		it('returns multiple comma-separated dep IDs', () => {
+			const engine = new IdEngine();
+			const deps = engine.collectAllDepIds('- [ ] Task ⛔ abc123,def456');
+			expect(deps).toEqual(new Set(['abc123', 'def456']));
+		});
+
+		it('returns deps from multiple lines', () => {
+			const engine = new IdEngine();
+			const content = [
+				'- [ ] Task A ⛔ aaa111',
+				'- [ ] Task B ⛔ bbb222',
+			].join('\n');
+			const deps = engine.collectAllDepIds(content);
+			expect(deps).toEqual(new Set(['aaa111', 'bbb222']));
+		});
+
+		it('handles mixed content (lines with and without deps)', () => {
+			const engine = new IdEngine();
+			const content = [
+				'- [ ] Task A ⛔ aaa111',
+				'- [ ] Task B 🆔 bbb222',
+				'Some plain text',
+				'- [ ] Task C ⛔ ccc333,ddd444',
+			].join('\n');
+			const deps = engine.collectAllDepIds(content);
+			expect(deps).toEqual(new Set(['aaa111', 'ccc333', 'ddd444']));
+		});
+
+		it('trims whitespace around comma-separated IDs', () => {
+			const engine = new IdEngine();
+			const deps = engine.collectAllDepIds('- [ ] Task ⛔ abc123 , def456');
+			expect(deps).toEqual(new Set(['abc123', 'def456']));
 		});
 	});
 
@@ -173,6 +227,64 @@ describe('IdCache', () => {
 			const ids1 = cache.getIds();
 			const ids2 = cache.getIds();
 			expect(ids1).toBe(ids2);
+		});
+	});
+});
+
+describe('DepCache', () => {
+	describe('buildFromContents', () => {
+		it('populates deps from multiple files', () => {
+			const cache = new DepCache(new IdEngine());
+			cache.buildFromContents([
+				'- [ ] Task A ⛔ aaa111',
+				'- [ ] Task B ⛔ bbb222\n- [ ] Task C ⛔ ccc333',
+			]);
+			expect(cache.getDeps()).toEqual(new Set(['aaa111', 'bbb222', 'ccc333']));
+		});
+
+		it('clears previous deps before rebuilding', () => {
+			const cache = new DepCache(new IdEngine());
+			cache.buildFromContents(['- [ ] Task ⛔ old111']);
+			cache.buildFromContents(['- [ ] Task ⛔ new222']);
+			expect(cache.getDeps()).toEqual(new Set(['new222']));
+			expect(cache.getDeps().has('old111')).toBe(false);
+		});
+
+		it('returns empty set for empty contents array', () => {
+			const cache = new DepCache(new IdEngine());
+			cache.buildFromContents([]);
+			expect(cache.getDeps().size).toBe(0);
+		});
+	});
+
+	describe('updateFromContent', () => {
+		it('adds new deps to the existing cache', () => {
+			const cache = new DepCache(new IdEngine());
+			cache.buildFromContents(['- [ ] Task ⛔ aaa111']);
+			cache.updateFromContent('- [ ] Task ⛔ bbb222');
+			expect(cache.getDeps()).toEqual(new Set(['aaa111', 'bbb222']));
+		});
+
+		it('does nothing for content without deps', () => {
+			const cache = new DepCache(new IdEngine());
+			cache.buildFromContents(['- [ ] Task ⛔ aaa111']);
+			cache.updateFromContent('- [ ] No deps here');
+			expect(cache.getDeps()).toEqual(new Set(['aaa111']));
+		});
+
+		it('works on an empty cache', () => {
+			const cache = new DepCache(new IdEngine());
+			cache.updateFromContent('- [ ] Task ⛔ abc123');
+			expect(cache.getDeps()).toEqual(new Set(['abc123']));
+		});
+	});
+
+	describe('getDeps', () => {
+		it('returns the internal set (same reference)', () => {
+			const cache = new DepCache(new IdEngine());
+			const deps1 = cache.getDeps();
+			const deps2 = cache.getDeps();
+			expect(deps1).toBe(deps2);
 		});
 	});
 });

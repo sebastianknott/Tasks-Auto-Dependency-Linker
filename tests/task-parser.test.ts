@@ -58,21 +58,46 @@ describe('TaskParser', () => {
 				expect(match![1]).toBe('z9a8b7');
 			});
 
-			it('does not match an ID with uppercase chars', () => {
-				const match = '\u{1F194} ABC123'.match(TaskParser.ID_REGEX);
-				expect(match).toBeNull();
-			});
-
-			it('does not match an ID shorter than 6 chars', () => {
-				const match = '\u{1F194} abc12'.match(TaskParser.ID_REGEX);
-				expect(match).toBeNull();
-			});
-
-			it('does not match an ID longer than 6 chars', () => {
-				const match = '\u{1F194} abc1234'.match(TaskParser.ID_REGEX);
-				// Should match abc123 (first 6), capturing group is exactly 6
+			it('matches an ID with uppercase chars', () => {
+				const match = '\u{1F194} AbC123'.match(TaskParser.ID_REGEX);
 				expect(match).not.toBeNull();
-				expect(match![1]).toBe('abc123');
+				expect(match![1]).toBe('AbC123');
+			});
+
+			it('matches an ID with hyphens', () => {
+				const match = '\u{1F194} my-task-id'.match(TaskParser.ID_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('my-task-id');
+			});
+
+			it('matches an ID with underscores', () => {
+				const match = '\u{1F194} my_task'.match(TaskParser.ID_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('my_task');
+			});
+
+			it('matches a longer ID (10 chars)', () => {
+				const match = '\u{1F194} abcdefghij'.match(TaskParser.ID_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('abcdefghij');
+			});
+
+			it('matches a single-char ID', () => {
+				const match = '\u{1F194} a'.match(TaskParser.ID_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('a');
+			});
+
+			it('matches a shorter ID (5 chars)', () => {
+				const match = '\u{1F194} abc12'.match(TaskParser.ID_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('abc12');
+			});
+
+			it('matches a longer ID and captures the full ID', () => {
+				const match = '\u{1F194} abc1234'.match(TaskParser.ID_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('abc1234');
 			});
 		});
 
@@ -98,10 +123,32 @@ describe('TaskParser', () => {
 				expect(match![1]).toBe('abc123, def456');
 			});
 
-			it('does not match a dep with uppercase chars', () => {
-				const line = '⛔ ABCDEF';
+			it('matches dep IDs with uppercase chars', () => {
+				const line = '⛔ AbC123';
 				const match = line.match(TaskParser.DEP_REGEX);
-				expect(match).toBeNull();
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('AbC123');
+			});
+
+			it('matches dep IDs with hyphens', () => {
+				const line = '⛔ my-task-id';
+				const match = line.match(TaskParser.DEP_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('my-task-id');
+			});
+
+			it('matches comma-separated mixed-case deps', () => {
+				const line = '⛔ AbC123,my-task';
+				const match = line.match(TaskParser.DEP_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('AbC123,my-task');
+			});
+
+			it('matches deps when followed by other metadata', () => {
+				const line = '⛔ abc123 📅 2025-01-01';
+				const match = line.match(TaskParser.DEP_REGEX);
+				expect(match).not.toBeNull();
+				expect(match![1]).toBe('abc123');
 			});
 
 			it('matches ⛔ even when followed by other markers like 🆔', () => {
@@ -187,6 +234,58 @@ describe('TaskParser', () => {
 
 		it('returns false for a numbered list', () => {
 			expect(parser.isTaskLine('1. First item')).toBe(false);
+		});
+	});
+
+	describe('isListItem', () => {
+		const parser = new TaskParser();
+
+		it('returns true for a dash bullet', () => {
+			expect(parser.isListItem('- item')).toBe(true);
+		});
+
+		it('returns true for an asterisk bullet', () => {
+			expect(parser.isListItem('* item')).toBe(true);
+		});
+
+		it('returns true for a dash task', () => {
+			expect(parser.isListItem('- [ ] task')).toBe(true);
+		});
+
+		it('returns true for a tab-indented task', () => {
+			expect(parser.isListItem('\t- [ ] indented task')).toBe(true);
+		});
+
+		it('returns true for a space-indented completed task', () => {
+			expect(parser.isListItem('    * [x] space-indented completed task')).toBe(true);
+		});
+
+		it('returns true for a tab-indented bullet', () => {
+			expect(parser.isListItem('\t- plain bullet')).toBe(true);
+		});
+
+		it('returns false for a blank line', () => {
+			expect(parser.isListItem('')).toBe(false);
+		});
+
+		it('returns false for a heading', () => {
+			expect(parser.isListItem('# Heading')).toBe(false);
+		});
+
+		it('returns false for paragraph text', () => {
+			expect(parser.isListItem('Some text')).toBe(false);
+		});
+
+		it('returns false for whitespace-only', () => {
+			expect(parser.isListItem('   ')).toBe(false);
+		});
+
+		it('returns false for a numbered list', () => {
+			expect(parser.isListItem('1. First item')).toBe(false);
+		});
+
+		it('returns false when bullet marker appears mid-line', () => {
+			expect(parser.isListItem('text - not a list item')).toBe(false);
 		});
 	});
 
@@ -306,6 +405,14 @@ describe('TaskParser', () => {
 		it('returns the ID from a line that also has dependencies', () => {
 			expect(parser.getTaskId('- [ ] Task 🆔 abc123 ⛔ def456,ghi789')).toBe('abc123');
 		});
+
+		it('extracts an ID with uppercase, hyphens, and underscores', () => {
+			expect(parser.getTaskId('- [ ] Task 🆔 My-Task_1')).toBe('My-Task_1');
+		});
+
+		it('extracts an ID when followed by other metadata', () => {
+			expect(parser.getTaskId('- [ ] Task 🆔 abc123 📅 2025-01-01')).toBe('abc123');
+		});
 	});
 
 	describe('getTaskDependencies', () => {
@@ -357,6 +464,18 @@ describe('TaskParser', () => {
 					'- [ ] Task ⛔ abc123,def456 🆔 xxx111',
 				),
 			).toEqual(['abc123', 'def456']);
+		});
+
+		it('extracts deps with uppercase, hyphens, and underscores', () => {
+			expect(
+				parser.getTaskDependencies('- [ ] Child ⛔ My-Task_1,AbC123'),
+			).toEqual(['My-Task_1', 'AbC123']);
+		});
+
+		it('extracts deps when followed by other metadata', () => {
+			expect(
+				parser.getTaskDependencies('- [ ] Child ⛔ abc123 📅 2025-01-01'),
+			).toEqual(['abc123']);
 		});
 	});
 
@@ -541,6 +660,15 @@ describe('TaskParser', () => {
 				),
 			).toBe('- [ ] Task ⛔ def456 🆔 xxx111');
 		});
+
+		it('removes a dep with uppercase, hyphens, and underscores', () => {
+			expect(
+				parser.removeDependencyFromLine(
+					'- [ ] Child ⛔ My-Task_1',
+					'My-Task_1',
+				),
+			).toBe('- [ ] Child');
+		});
 	});
 
 	describe('removeIdFromLine', () => {
@@ -581,6 +709,18 @@ describe('TaskParser', () => {
 
 		it('removes the ID marker even without a leading space', () => {
 			expect(parser.removeIdFromLine('🆔 abc123')).toBe('');
+		});
+
+		it('removes an uppercase ID', () => {
+			expect(
+				parser.removeIdFromLine('- [ ] Task 🆔 AbC123'),
+			).toBe('- [ ] Task');
+		});
+
+		it('removes a long ID with hyphens and underscores', () => {
+			expect(
+				parser.removeIdFromLine('- [ ] Task 🆔 my-long_task-id'),
+			).toBe('- [ ] Task');
 		});
 	});
 });

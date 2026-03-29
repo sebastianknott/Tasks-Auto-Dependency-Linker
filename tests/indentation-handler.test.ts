@@ -39,14 +39,15 @@ describe('IndentationHandler', () => {
 			expect(handler.findParentTask(lines, 1)).toBe(0);
 		});
 
-		it('skips non-task lines when searching upward', () => {
+		it('stops at a list boundary (non-list text between tasks)', () => {
 			const handler = new IndentationHandler(parser, idEngine);
 			const lines = [
 				'- [ ] Parent',
 				'Some text',
 				'\t- [ ] Child',
 			];
-			expect(handler.findParentTask(lines, 2)).toBe(0);
+			// 'Some text' is not a list item — it's a list boundary
+			expect(handler.findParentTask(lines, 2)).toBeNull();
 		});
 
 		it('finds the correct parent at multiple indent levels', () => {
@@ -137,6 +138,51 @@ describe('IndentationHandler', () => {
 			// even though a lower-indent task exists below
 			expect(handler.findParentTask(lines, 0)).toBeNull();
 		});
+
+		it('stops at a list boundary (blank line between lists)', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'- [ ] Parent in list A',
+				'',
+				'\t- [ ] Child in list B',
+			];
+			// Blank line is a list boundary — child should NOT find parent
+			expect(handler.findParentTask(lines, 2)).toBeNull();
+		});
+
+		it('stops at a list boundary (heading between lists)', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'- [ ] Parent in list A',
+				'## Section Two',
+				'\t- [ ] Child in list B',
+			];
+			// Heading is a list boundary — child should NOT find parent
+			expect(handler.findParentTask(lines, 2)).toBeNull();
+		});
+
+		it('allows non-task list items within the same list', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'- [ ] Parent task',
+				'- plain bullet',
+				'\t- [ ] Child task',
+			];
+			// '- plain bullet' is a list item (not a boundary), so the
+			// search continues upward and finds the parent task at index 0
+			expect(handler.findParentTask(lines, 2)).toBe(0);
+		});
+
+		it('stops at whitespace-only line (list boundary)', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'- [ ] Parent',
+				'   ',
+				'\t- [ ] Child',
+			];
+			// Whitespace-only line is not a list item — it's a boundary
+			expect(handler.findParentTask(lines, 2)).toBeNull();
+		});
 	});
 
 	describe('buildRelationshipMap', () => {
@@ -172,7 +218,7 @@ describe('IndentationHandler', () => {
 			expect(map.size).toBe(2);
 		});
 
-		it('skips non-task lines', () => {
+		it('does not link across a list boundary (non-list text)', () => {
 			const handler = new IndentationHandler(parser, idEngine);
 			const lines = [
 				'- [ ] Parent',
@@ -180,8 +226,8 @@ describe('IndentationHandler', () => {
 				'\t- [ ] Child',
 			];
 			const map = handler.buildRelationshipMap(lines);
-			expect(map.get(2)).toBe(0);
-			expect(map.size).toBe(1);
+			// 'Some text' is a list boundary — child cannot find parent
+			expect(map.size).toBe(0);
 		});
 
 		it('does not access beyond the lines array bounds', () => {
@@ -193,6 +239,102 @@ describe('IndentationHandler', () => {
 			const spy = vi.spyOn(handler, 'findParentTask');
 			handler.buildRelationshipMap(lines);
 			// Should be called exactly lines.length times (0 and 1), not 3
+			expect(spy).toHaveBeenCalledTimes(2);
+			spy.mockRestore();
+		});
+	});
+
+	describe('identifyListBlocks', () => {
+		it('returns empty array for no lines', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			expect(handler.identifyListBlocks([])).toEqual([]);
+		});
+
+		it('returns one block for a single list item', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = ['- [ ] Task'];
+			expect(handler.identifyListBlocks(lines)).toEqual([{ start: 0, end: 1 }]);
+		});
+
+		it('returns one block for two consecutive list items', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = ['- [ ] Task A', '\t- [ ] Task B'];
+			expect(handler.identifyListBlocks(lines)).toEqual([{ start: 0, end: 2 }]);
+		});
+
+		it('returns two blocks separated by a blank line', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'- [ ] Task A',
+				'',
+				'- [ ] Task B',
+			];
+			expect(handler.identifyListBlocks(lines)).toEqual([
+				{ start: 0, end: 1 },
+				{ start: 2, end: 3 },
+			]);
+		});
+
+		it('returns two blocks separated by a heading', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'- [ ] Task A',
+				'## Section',
+				'- [ ] Task B',
+			];
+			expect(handler.identifyListBlocks(lines)).toEqual([
+				{ start: 0, end: 1 },
+				{ start: 2, end: 3 },
+			]);
+		});
+
+		it('excludes non-list content at start and end', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'# Heading',
+				'- [ ] Task A',
+				'- [ ] Task B',
+				'Some paragraph',
+			];
+			expect(handler.identifyListBlocks(lines)).toEqual([
+				{ start: 1, end: 3 },
+			]);
+		});
+
+		it('includes non-task list items in the same block', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'- [ ] Task A',
+				'- plain bullet',
+				'- [ ] Task B',
+			];
+			expect(handler.identifyListBlocks(lines)).toEqual([
+				{ start: 0, end: 3 },
+			]);
+		});
+
+		it('handles multiple blocks with non-list content between them', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = [
+				'- [ ] List 1 task A',
+				'\t- [ ] List 1 task B',
+				'',
+				'# Heading',
+				'- [ ] List 2 task A',
+				'- [ ] List 2 task B',
+			];
+			expect(handler.identifyListBlocks(lines)).toEqual([
+				{ start: 0, end: 2 },
+				{ start: 4, end: 6 },
+			]);
+		});
+
+		it('does not access beyond the lines array bounds', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = ['- [ ] Task A', '- [ ] Task B'];
+			const spy = vi.spyOn(parser, 'isListItem');
+			handler.identifyListBlocks(lines);
+			// Should be called exactly lines.length times, not more
 			expect(spy).toHaveBeenCalledTimes(2);
 			spy.mockRestore();
 		});
@@ -783,6 +925,202 @@ describe('EditorProcessor', () => {
 			expect(lines[1]).toContain('🆔 abc444');
 			// Design API schema keeps 🆔 abc123 (Write tests now depends on it)
 			expect(lines[2]).toContain('🆔 abc123');
+		});
+
+		it('does not remove 🆔 from task in list A when only ⛔ reference is in list B', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// Task A in list 1 has 🆔 abc123, task B in list 2 has ⛔ abc123.
+			// Cross-list reference: the plugin should NOT touch either marker.
+			const lines = [
+				'- [ ] Task A 🆔 abc123',
+				'',
+				'- [ ] Task B ⛔ abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['abc123']);
+
+			processor.processAllLines(editor, existingIds);
+
+			// 🆔 on Task A must be preserved — it's in a different list from ⛔
+			expect(lines[0]).toContain('🆔 abc123');
+			// ⛔ on Task B must be preserved — it's in a different list
+			expect(lines[2]).toContain('⛔ abc123');
+		});
+
+		it('does not remove ⛔ from task in list A when referenced 🆔 is in list B', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// Parent in list 1 has ⛔ abc123, child in list 2 has 🆔 abc123.
+			// Cross-list: plugin should not touch either marker.
+			const lines = [
+				'- [ ] Parent ⛔ abc123',
+				'## Section Two',
+				'\t- [ ] Child 🆔 abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['abc123']);
+
+			processor.processAllLines(editor, existingIds);
+
+			// ⛔ on Parent must be preserved — cross-list reference
+			expect(lines[0]).toContain('⛔ abc123');
+			// 🆔 on Child must be preserved — cross-list reference
+			expect(lines[2]).toContain('🆔 abc123');
+		});
+
+		it('two separate lists each get independent dependency management', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			const lines = [
+				'- [ ] Parent A',
+				'\t- [ ] Child A',
+				'',
+				'- [ ] Parent B',
+				'\t- [ ] Child B',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set<string>();
+
+			processor.processAllLines(editor, existingIds);
+
+			// List 1: Child A gets 🆔, Parent A gets ⛔
+			expect(lines[1]).toMatch(/🆔 [a-z0-9]{6}/);
+			const childAId = lines[1]!.match(/🆔\s([a-z0-9]{6})/)![1]!;
+			expect(lines[0]).toContain(`⛔ ${childAId}`);
+
+			// List 2: Child B gets 🆔, Parent B gets ⛔
+			expect(lines[4]).toMatch(/🆔 [a-z0-9]{6}/);
+			const childBId = lines[4]!.match(/🆔\s([a-z0-9]{6})/)![1]!;
+			expect(lines[3]).toContain(`⛔ ${childBId}`);
+
+			// Cross-list: Parent A should NOT have ⛔ for Child B
+			expect(parser.getTaskDependencies(lines[0]!)).not.toContain(childBId);
+			// Cross-list: Parent B should NOT have ⛔ for Child A
+			expect(parser.getTaskDependencies(lines[3]!)).not.toContain(childAId);
+		});
+
+		it('task indented under heading does not get linked to parent in different list', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			const lines = [
+				'- [ ] Parent in list A',
+				'# Heading',
+				'\t- [ ] Child in list B',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set<string>();
+
+			processor.processAllLines(editor, existingIds);
+
+			// Child should NOT get linked to Parent (different lists)
+			expect(lines[0]).not.toContain('⛔');
+			expect(lines[2]).not.toContain('🆔');
+		});
+	});
+
+	describe('cross-file vault dep IDs', () => {
+		it('does not remove 🆔 when the ID is in vaultDepIds (cross-file reference)', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// A root-level task has 🆔 abc123 but no ⛔ in this document.
+			// However, abc123 IS referenced by ⛔ in another file (vaultDepIds).
+			const lines = [
+				'- [ ] Task with cross-file dep 🆔 abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['abc123']);
+			const vaultDepIds = new Set(['abc123']);
+
+			processor.processAllLines(editor, existingIds, vaultDepIds);
+
+			// 🆔 should be preserved — it's referenced in another vault file
+			expect(lines[0]).toContain('🆔 abc123');
+		});
+
+		it('removes 🆔 when the ID is NOT in vaultDepIds and no local ⛔ exists', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			const lines = [
+				'- [ ] Task with orphaned ID 🆔 abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['abc123']);
+			const vaultDepIds = new Set<string>(); // empty — no cross-file refs
+
+			processor.processAllLines(editor, existingIds, vaultDepIds);
+
+			// 🆔 should be removed — no local or vault-wide reference
+			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
+		});
+
+		it('works correctly when vaultDepIds is undefined (backward compatible)', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			const lines = [
+				'- [ ] Task with orphaned ID 🆔 abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['abc123']);
+
+			// No vaultDepIds passed — should behave as before (remove orphaned 🆔)
+			processor.processAllLines(editor, existingIds);
+
+			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
+		});
+
+		it('preserves 🆔 when local ⛔ exists even if vaultDepIds is empty', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			const lines = [
+				'- [ ] Parent ⛔ abc123',
+				'\t- [ ] Child 🆔 abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['abc123']);
+			const vaultDepIds = new Set<string>(); // empty
+
+			processor.processAllLines(editor, existingIds, vaultDepIds);
+
+			// 🆔 preserved because local ⛔ references it
+			expect(lines[1]).toContain('🆔 abc123');
+		});
+
+		it('preserves multiple 🆔 markers when their IDs are in vaultDepIds', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			const lines = [
+				'- [ ] Task A 🆔 aaa111',
+				'- [ ] Task B 🆔 bbb222',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['aaa111', 'bbb222']);
+			const vaultDepIds = new Set(['aaa111', 'bbb222']);
+
+			processor.processAllLines(editor, existingIds, vaultDepIds);
+
+			// Both 🆔 should be preserved — both referenced in vault
+			expect(lines[0]).toContain('🆔 aaa111');
+			expect(lines[1]).toContain('🆔 bbb222');
+		});
+
+		it('removes only the 🆔 not in vaultDepIds when multiple tasks exist', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			const lines = [
+				'- [ ] Task A 🆔 aaa111',
+				'- [ ] Task B 🆔 bbb222',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['aaa111', 'bbb222']);
+			// Only aaa111 is referenced in another file
+			const vaultDepIds = new Set(['aaa111']);
+
+			processor.processAllLines(editor, existingIds, vaultDepIds);
+
+			// aaa111 preserved (vault reference), bbb222 removed (orphaned)
+			expect(lines[0]).toContain('🆔 aaa111');
+			expect(lines[1]).toBe('- [ ] Task B');
 		});
 	});
 });

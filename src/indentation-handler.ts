@@ -50,6 +50,9 @@ export class IndentationHandler {
 
 		for (let i = lineIndex - 1; i >= 0; i--) {
 			const line = lines[i]!;
+			if (!this.parser.isListItem(line)) {
+				return null;
+			}
 			if (!this.parser.isTaskLine(line)) {
 				continue;
 			}
@@ -142,11 +145,22 @@ export class IndentationHandler {
 	/**
 	 * Removes `⛔` markers from a task line that are not in the desired
 	 * set of dependency IDs. Returns the updated line.
+	 *
+	 * When `managedIds` is provided, only deps whose ID is in that set
+	 * are considered for removal. Deps referencing IDs outside the set
+	 * (e.g. cross-list references) are left untouched.
 	 */
-	removeStaleDeps(line: string, desiredDeps: Set<string>): string {
+	removeStaleDeps(
+		line: string,
+		desiredDeps: Set<string>,
+		managedIds?: Set<string>,
+	): string {
 		const currentDeps = this.parser.getTaskDependencies(line);
 		let result = line;
 		for (const dep of currentDeps) {
+			if (managedIds && !managedIds.has(dep)) {
+				continue;
+			}
 			if (!desiredDeps.has(dep)) {
 				result = this.parser.removeDependencyFromLine(result, dep);
 			}
@@ -165,6 +179,39 @@ export class IndentationHandler {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Identifies contiguous list blocks in the document.
+	 *
+	 * A list block is a maximal contiguous sequence of list-item lines.
+	 * Non-list-item lines (blank lines, headings, paragraphs, etc.)
+	 * act as boundaries between blocks.
+	 *
+	 * Returns an array of `{start, end}` ranges where `start` is
+	 * inclusive and `end` is exclusive (like `Array.slice`).
+	 */
+	identifyListBlocks(
+		lines: string[],
+	): Array<{ start: number; end: number }> {
+		const blocks: Array<{ start: number; end: number }> = [];
+		let blockStart: number | null = null;
+
+		for (let i = 0; i < lines.length; i++) {
+			const isItem = this.parser.isListItem(lines[i]!);
+			if (isItem && blockStart === null) {
+				blockStart = i;
+			} else if (!isItem && blockStart !== null) {
+				blocks.push({ start: blockStart, end: i });
+				blockStart = null;
+			}
+		}
+
+		if (blockStart !== null) {
+			blocks.push({ start: blockStart, end: lines.length });
+		}
+
+		return blocks;
 	}
 
 	/** Returns the `🆔` from a line, or null. Delegates to {@link TaskParser}. */
@@ -194,8 +241,18 @@ export class EditorProcessor {
 		this.handler = handler;
 	}
 
-	/** Processes every line in the editor for dependency linking. */
-	processAllLines(editor: EditorLike, existingIds: Set<string>): void {
+	/**
+	 * Processes every line in the editor for dependency linking.
+	 *
+	 * When `vaultDepIds` is provided, orphaned `🆔` markers whose ID
+	 * appears in that set are preserved (they are referenced by a `⛔`
+	 * in another vault file).
+	 */
+	processAllLines(
+		editor: EditorLike,
+		existingIds: Set<string>,
+		vaultDepIds?: Set<string>,
+	): void {
 		const lineCount = editor.lineCount();
 
 		// Pass 1: Link — add 🆔 / ⛔ markers based on indentation
@@ -209,32 +266,66 @@ export class EditorProcessor {
 			lines.push(editor.getLine(i));
 		}
 
-		// Build desired relationships from current indentation
-		const relationships = this.handler.buildRelationshipMap(lines);
+		// Identify list blocks so cleanup is scoped per-list
+		const blocks = this.handler.identifyListBlocks(lines);
 
-		// Pass 2a: Remove stale ⛔ from each task line
-		for (let i = 0; i < lineCount; i++) {
-			const line = lines[i]!;
-			const desiredDeps = this.handler.getDesiredDepsForParent(
-				lines,
-				i,
-				relationships,
-			);
-			const cleaned = this.handler.removeStaleDeps(line, desiredDeps);
-			if (cleaned !== line) {
-				editor.setLine(i, cleaned);
-				lines[i] = cleaned;
+		// Collect all 🆔 IDs present in each block for cross-reference checks
+		const blockIdSets: Map<number, Set<string>> = new Map();
+		for (let b = 0; b < blocks.length; b++) {
+			const ids = new Set<string>();
+			const block = blocks[b]!;
+			for (let i = block.start; i < block.end; i++) {
+				const id = this.handler.getTaskId(lines[i]!);
+				if (id) {
+					ids.add(id);
+				}
 			}
+			blockIdSets.set(b, ids);
 		}
 
-		// Pass 2b: Remove orphaned 🆔 (no ⛔ references it anywhere)
-		for (let i = 0; i < lineCount; i++) {
-			const line = lines[i]!;
-			const id = this.handler.getTaskId(line);
-			if (id && !this.handler.isIdReferencedAsDep(lines, id)) {
-				const cleaned = this.handler.removeIdFromLine(line);
-				editor.setLine(i, cleaned);
-				lines[i] = cleaned;
+		// Pass 2: Cleanup per list block
+		for (let b = 0; b < blocks.length; b++) {
+			const block = blocks[b]!;
+			const blockLines = lines.slice(block.start, block.end);
+			const blockIds = blockIdSets.get(b)!;
+			const relationships = this.handler.buildRelationshipMap(blockLines);
+
+			// Pass 2a: Remove stale ⛔ — only for deps whose 🆔 is in this block
+			for (let bi = 0; bi < blockLines.length; bi++) {
+				const line = blockLines[bi]!;
+				const desiredDeps = this.handler.getDesiredDepsForParent(
+					blockLines,
+					bi,
+					relationships,
+				);
+				const cleaned = this.handler.removeStaleDeps(
+					line,
+					desiredDeps,
+					blockIds,
+				);
+				if (cleaned !== line) {
+					const docIndex = block.start + bi;
+					editor.setLine(docIndex, cleaned);
+					lines[docIndex] = cleaned;
+					blockLines[bi] = cleaned;
+				}
+			}
+
+			// Pass 2b: Remove orphaned 🆔 (no ⛔ references it in document or vault)
+			for (let bi = 0; bi < blockLines.length; bi++) {
+				const line = blockLines[bi]!;
+				const id = this.handler.getTaskId(line);
+				if (
+					id &&
+					!this.handler.isIdReferencedAsDep(lines, id) &&
+					!vaultDepIds?.has(id)
+				) {
+					const cleaned = this.handler.removeIdFromLine(line);
+					const docIndex = block.start + bi;
+					editor.setLine(docIndex, cleaned);
+					lines[docIndex] = cleaned;
+					blockLines[bi] = cleaned;
+				}
 			}
 		}
 	}
