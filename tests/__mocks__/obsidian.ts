@@ -50,6 +50,9 @@ export class Plugin extends Component {
 			},
 			getActiveViewOfType: (_type: unknown): unknown => null,
 		}),
+		plugins: {
+			enabledPlugins: new Set<string>(['obsidian-tasks-plugin']),
+		},
 	};
 
 	async onload(): Promise<void> {

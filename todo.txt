@@ -1,5 +1,2 @@
-(A) Make the plugin do nothing, when Tasks-plugin is not installed and active +core @dev
-(A) Id markers which are referenced by any note in the vault can not be removed on cleanup +core @dev
-(A) Make sure that IDs and DependOns are correctly parsed even if they are not at the end of the line. Check Tasks-Plugin Docs +core @dev
 (B) Check if all files in the repository serve a purpose. Especially version-bump-mjs and verisons.json. look it up on the net
 (C) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy

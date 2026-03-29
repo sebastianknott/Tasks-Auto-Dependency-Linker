@@ -26,6 +26,46 @@ describe('TasksAutoDependencyLinker', () => {
 		expect(typeof plugin.onunload).toBe('function');
 	});
 
+	describe('Tasks plugin detection', () => {
+		it('does nothing when Tasks plugin is not enabled', async () => {
+			const p = plugin as PluginInternals;
+			p.app.plugins.enabledPlugins = new Set<string>();
+
+			await plugin.onload();
+
+			// No events should be registered
+			const vaultHandlers = p._vaultEmitter.getHandlers('modify');
+			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
+			expect(vaultHandlers.length).toBe(0);
+			expect(wsHandlers.length).toBe(0);
+			expect(p._layoutReadyCb).toBeNull();
+			expect(p._registeredEvents.length).toBe(0);
+		});
+
+		it('proceeds normally when Tasks plugin is enabled', async () => {
+			const p = plugin as PluginInternals;
+			// The mock default includes 'obsidian-tasks-plugin' in enabledPlugins
+			expect(p.app.plugins.enabledPlugins.has('obsidian-tasks-plugin')).toBe(true);
+
+			await plugin.onload();
+
+			const vaultHandlers = p._vaultEmitter.getHandlers('modify');
+			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
+			expect(vaultHandlers.length).toBe(1);
+			expect(wsHandlers.length).toBe(1);
+		});
+
+		it('does not set up debounce when Tasks plugin is missing', async () => {
+			const p = plugin as PluginInternals;
+			p.app.plugins.enabledPlugins = new Set<string>();
+
+			await plugin.onload();
+
+			// onunload should not throw even though debounce was never set up
+			expect(() => plugin.onunload()).not.toThrow();
+		});
+	});
+
 	describe('onload', () => {
 		it('registers vault modify and workspace editor-change events', async () => {
 			await plugin.onload();

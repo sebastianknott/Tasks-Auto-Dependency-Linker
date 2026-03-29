@@ -31,15 +31,19 @@ export class TaskParser {
 	/** Matches a task line: optional whitespace, then `- [ ] ` or `* [ ] `. */
 	static readonly TASK_REGEX = /^\s*([-*]\s\[.\]\s)/;
 
-	/** Captures the 6-char lowercase alphanumeric ID after the `🆔` emoji. */
-	static readonly ID_REGEX = /🆔\s([a-z0-9]{6})/;
+	/** Matches any list item: optional whitespace, then `- ` or `* `. */
+	static readonly LIST_ITEM_REGEX = /^\s*[-*]\s/;
+
+	/** Captures the ID after the `🆔` emoji. Tolerates `[a-zA-Z0-9_-]+`. */
+	static readonly ID_REGEX = /🆔\s([a-zA-Z0-9_-]+)/;
 
 	/**
 	 * Captures the comma-separated dependency ID list after a single `⛔` emoji.
 	 * Matches format: `⛔ id1,id2,id3` (with optional spaces around commas).
+	 * Tolerates `[a-zA-Z0-9_-]+` for each ID.
 	 * No `$` anchor — the `⛔` marker may appear before a `🆔` marker.
 	 */
-	static readonly DEP_REGEX = /⛔ ([a-z0-9]{6}(?:\s*,\s*[a-z0-9]{6})*)/;
+	static readonly DEP_REGEX = /⛔\s([a-zA-Z0-9_-]+(?:\s*,\s*[a-zA-Z0-9_-]+)*)/;
 
 	private readonly indentConfig: IndentConfig;
 
@@ -50,6 +54,11 @@ export class TaskParser {
 	/** Returns true when the line is a task (has a checkbox marker). */
 	isTaskLine(line: string): boolean {
 		return TaskParser.TASK_REGEX.test(line);
+	}
+
+	/** Returns true when the line is any list item (bullet or task). */
+	isListItem(line: string): boolean {
+		return TaskParser.LIST_ITEM_REGEX.test(line);
 	}
 
 	/**
@@ -83,7 +92,7 @@ export class TaskParser {
 		return tabs + Math.floor(spaces / this.indentConfig.tabSize);
 	}
 
-	/** Extracts the 6-char ID from a `🆔` marker, or null. */
+	/** Extracts the ID from a `🆔` marker, or null. */
 	getTaskId(line: string): string | null {
 		const match = line.match(TaskParser.ID_REGEX);
 		return match ? match[1]! : null;
@@ -155,7 +164,7 @@ export class TaskParser {
 
 	/** Removes the `🆔 <id>` marker from a line. Cleans up whitespace. */
 	removeIdFromLine(line: string): string {
-		const pattern = /\s?🆔\s[a-z0-9]{6}/;
+		const pattern = /\s?🆔\s[a-zA-Z0-9_-]+/;
 		return line.replace(pattern, '').trimEnd();
 	}
 }
