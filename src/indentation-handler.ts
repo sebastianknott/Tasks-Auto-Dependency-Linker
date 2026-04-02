@@ -27,10 +27,27 @@ export interface EditorLike {
 export class IndentationHandler {
 	private readonly parser: TaskParser;
 	private readonly idEngine: IdEngine;
+	/** Snapshot of editor lines set once before each link pass. */
+	private snapshot: string[] = [];
 
 	constructor(parser: TaskParser, idEngine: IdEngine) {
 		this.parser = parser;
 		this.idEngine = idEngine;
+	}
+
+	/**
+	 * Reads all editor lines into the internal snapshot.
+	 *
+	 * Call once before the link-pass loop so that every subsequent
+	 * {@link processLine} call can find parent tasks from the snapshot
+	 * in O(1) per line rather than rebuilding the full array on each call.
+	 */
+	prepareForLinkPass(editor: EditorLike): void {
+		const count = editor.lineCount();
+		this.snapshot = [];
+		for (let i = 0; i < count; i++) {
+			this.snapshot.push(editor.getLine(i));
+		}
 	}
 
 	/**
@@ -73,13 +90,7 @@ export class IndentationHandler {
 		lineIndex: number,
 		existingIds: Set<string>,
 	): void {
-		const lineCount = editor.lineCount();
-		const lines: string[] = [];
-		for (let i = 0; i < lineCount; i++) {
-			lines.push(editor.getLine(i));
-		}
-
-		const parentIndex = this.findParentTask(lines, lineIndex);
+		const parentIndex = this.findParentTask(this.snapshot, lineIndex);
 		if (parentIndex === null) {
 			return;
 		}

@@ -75,6 +75,11 @@ export class EditorProcessor {
 	private runLinkPass(): void {
 		const existingIds = this.idCache.getAll();
 		const lineCount = this.editor.lineCount();
+
+		// Read all lines once so processLine can find parents without rebuilding
+		// the full array on every call (avoids O(N^2) line reads).
+		this.handler.prepareForLinkPass(this.editor);
+
 		for (let i = 0; i < lineCount; i++) {
 			this.handler.processLine(this.editor, i, existingIds);
 		}

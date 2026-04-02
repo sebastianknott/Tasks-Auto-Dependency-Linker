@@ -391,6 +391,19 @@ describe('IndentationHandler', () => {
 		});
 	});
 
+	describe('prepareForLinkPass', () => {
+		it('stores the editor lines as a snapshot for processLine', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const lines = ['- [ ] Parent', '\t- [ ] Child'];
+			const editor = createMockEditor(lines);
+			handler.prepareForLinkPass(editor);
+			// After preparation, processLine can find the parent task
+			const existingIds = new Set<string>();
+			handler.processLine(editor, 1, existingIds);
+			expect(lines[1]).toMatch(/🆔 [a-z0-9]{6}/);
+		});
+	});
+
 	describe('processLine', () => {
 		it('adds ID to child and dependency to parent on indent', () => {
 			const handler = new IndentationHandler(parser, idEngine);
@@ -401,6 +414,7 @@ describe('IndentationHandler', () => {
 			const editor = createMockEditor(lines);
 			const existingIds = new Set<string>();
 
+			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, existingIds);
 
 			// Child should now have an ID (it blocks the parent)
@@ -421,6 +435,7 @@ describe('IndentationHandler', () => {
 			const editor = createMockEditor(lines);
 			const existingIds = new Set(['abc123']);
 
+			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, existingIds);
 
 			// Child ID unchanged
@@ -437,6 +452,7 @@ describe('IndentationHandler', () => {
 			];
 			const editor = createMockEditor(lines);
 
+			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set());
 
 			expect(lines[0]).toBe('- [ ] Parent');
@@ -448,6 +464,7 @@ describe('IndentationHandler', () => {
 			const lines = ['- [ ] Root task'];
 			const editor = createMockEditor(lines);
 
+			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 0, new Set());
 
 			expect(lines[0]).toBe('- [ ] Root task');
@@ -461,6 +478,7 @@ describe('IndentationHandler', () => {
 			];
 			const editor = createMockEditor(lines);
 
+			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['abc123']));
 
 			expect(lines[0]).toBe('- [ ] Parent \u26D4 abc123');
@@ -475,6 +493,7 @@ describe('IndentationHandler', () => {
 			const editor = createMockEditor(lines);
 			const existingIds = new Set<string>();
 
+			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, existingIds);
 
 			expect(existingIds.size).toBe(1);
@@ -491,6 +510,7 @@ describe('IndentationHandler', () => {
 			];
 			const editor = createMockEditor(lines);
 
+			handler.prepareForLinkPass(editor);
 			// Process a line index that's out of bounds
 			handler.processLine(editor, 5, new Set());
 
@@ -502,6 +522,7 @@ describe('IndentationHandler', () => {
 			const lines: string[] = [];
 			const editor = createMockEditor(lines);
 
+			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 0, new Set());
 
 			expect(editor.setLine).not.toHaveBeenCalled();
@@ -515,6 +536,7 @@ describe('IndentationHandler', () => {
 			];
 			const editor = createMockEditor(lines);
 
+			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['oldid1']));
 
 			// Should add new child's ID + dependency on parent, keeping old dep
