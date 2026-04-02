@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { IndentationHandler } from '../src/indentation-handler';
 import { EditorProcessor, type MarkerCacheLike } from '../src/editor-processor';
-import { TaskParser, DEFAULT_INDENT_CONFIG } from '../src/task-parser';
+import { TaskParser } from '../src/task-parser';
 import { IdEngine } from '../src/id-engine';
 
 /** Minimal Editor mock matching Obsidian's Editor interface surface we use. */
@@ -21,7 +21,7 @@ function createMockEditor(lines: string[]) {
 }
 
 describe('IndentationHandler', () => {
-	const parser = new TaskParser(DEFAULT_INDENT_CONFIG);
+	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
 	const idEngine = new IdEngine();
 
 	describe('findParentTask', () => {
@@ -544,7 +544,7 @@ function createDepCache(deps?: Set<string>): MarkerCacheLike {
 }
 
 describe('EditorProcessor', () => {
-	const parser = new TaskParser(DEFAULT_INDENT_CONFIG);
+	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
 	const idEngine = new IdEngine();
 
 	it('processes all lines in the editor', () => {

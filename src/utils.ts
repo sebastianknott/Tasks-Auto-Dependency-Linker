@@ -2,9 +2,6 @@
  * General-purpose utilities for the Tasks Auto-Dependency Linker plugin.
  */
 
-/** Default debounce delay in milliseconds, per plugin requirements. */
-export const DEFAULT_DEBOUNCE_DELAY = 300;
-
 /**
  * Debounces a callback so it only fires after a quiet period.
  *
@@ -13,11 +10,14 @@ export const DEFAULT_DEBOUNCE_DELAY = 300;
  * Use {@link cancel} during plugin `onunload` to prevent stale firings.
  */
 export class Debounce {
+	/** Default debounce delay in milliseconds, per plugin requirements. */
+	static readonly DEFAULT_DELAY = 300;
+
 	private readonly callback: () => void;
 	private readonly delay: number;
 	private timerId: ReturnType<typeof setTimeout> | null = null;
 
-	constructor(callback: () => void, delay: number = DEFAULT_DEBOUNCE_DELAY) {
+	constructor(callback: () => void, delay: number = Debounce.DEFAULT_DELAY) {
 		this.callback = callback;
 		this.delay = delay;
 	}
