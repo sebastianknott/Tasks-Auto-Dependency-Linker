@@ -1,0 +1,6 @@
+{
+	"score_cap": 60,
+	"exclude_filenames": ["*.test.{ts,tsx}", "*.spec.{ts,tsx}"],
+	"exclude_directories": ["/dist", "/bin", "/build", "/tests", "/node_modules"],
+	"exclude_under": 6
+}

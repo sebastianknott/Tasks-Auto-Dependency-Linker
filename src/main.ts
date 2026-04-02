@@ -2,7 +2,8 @@ import { Plugin, MarkdownView, TFile } from 'obsidian';
 import { TaskParser } from './task-parser';
 import type { IndentConfig } from './task-parser';
 import { IdEngine, IdCache, DepCache } from './id-engine';
-import { IndentationHandler, EditorProcessor } from './indentation-handler';
+import { IndentationHandler } from './indentation-handler';
+import { EditorProcessor } from './editor-processor';
 import { Debounce } from './utils';
 
 /**
@@ -46,7 +47,7 @@ export default class TasksAutoDependencyLinker extends Plugin {
 
 		this.idCache = new IdCache(idEngine);
 		this.depCache = new DepCache(idEngine);
-		this.processor = new EditorProcessor(handler);
+		this.processor = new EditorProcessor(handler, this.idCache, this.depCache);
 		this.debounce = new Debounce(() => this.processActiveEditor());
 
 		this.app.workspace.onLayoutReady(() => void this.buildIdCache());
@@ -92,12 +93,6 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		if (!view) {
 			return;
 		}
-		const filePath = view.file?.path ?? '';
-		this.processor.processAllLines(
-			view.editor,
-			this.idCache.getIds(),
-			this.depCache.getDeps(),
-			this.idCache.getIdsExcluding(filePath),
-		);
+		this.processor.processAllLines(view.editor, view.file?.path ?? '');
 	}
 }
