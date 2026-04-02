@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TaskParser, DEFAULT_INDENT_CONFIG } from '../src/task-parser';
+import { TaskParser } from '../src/task-parser';
 
 describe('TaskParser', () => {
 	describe('static regex constants', () => {
@@ -65,9 +65,9 @@ describe('TaskParser', () => {
 		});
 	});
 
-	describe('DEFAULT_INDENT_CONFIG', () => {
+	describe('DEFAULT_CONFIG', () => {
 		it('defaults to useTab true and tabSize 4', () => {
-			expect(DEFAULT_INDENT_CONFIG).toEqual({ useTab: true, tabSize: 4 });
+			expect(TaskParser.DEFAULT_CONFIG).toEqual({ useTab: true, tabSize: 4 });
 		});
 	});
 

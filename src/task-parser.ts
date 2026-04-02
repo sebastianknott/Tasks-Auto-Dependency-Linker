@@ -14,12 +14,6 @@ export interface IndentConfig {
 	readonly tabSize: number;
 }
 
-/** Default config matching Obsidian's defaults (useTab: true, tabSize: 4). */
-export const DEFAULT_INDENT_CONFIG: IndentConfig = {
-	useTab: true,
-	tabSize: 4,
-};
-
 /**
  * Parses and manipulates Obsidian Tasks lines.
  *
@@ -28,6 +22,12 @@ export const DEFAULT_INDENT_CONFIG: IndentConfig = {
  * it to the indentation handler.
  */
 export class TaskParser {
+	/** Default config matching Obsidian's defaults (useTab: true, tabSize: 4). */
+	static readonly DEFAULT_CONFIG: IndentConfig = {
+		useTab: true,
+		tabSize: 4,
+	};
+
 	/** Matches a task line: optional whitespace, then `- [ ] ` or `* [ ] `. */
 	static readonly TASK_REGEX = /^\s*([-*]\s\[.\]\s)/;
 
@@ -47,7 +47,7 @@ export class TaskParser {
 
 	private readonly indentConfig: IndentConfig;
 
-	constructor(indentConfig: IndentConfig = DEFAULT_INDENT_CONFIG) {
+	constructor(indentConfig: IndentConfig = TaskParser.DEFAULT_CONFIG) {
 		this.indentConfig = indentConfig;
 	}
 

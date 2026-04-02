@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Debounce, DEFAULT_DEBOUNCE_DELAY } from '../src/utils';
+import { Debounce } from '../src/utils';
 
 describe('Debounce', () => {
 	beforeEach(() => {
@@ -10,9 +10,9 @@ describe('Debounce', () => {
 		vi.useRealTimers();
 	});
 
-	describe('DEFAULT_DEBOUNCE_DELAY', () => {
+	describe('DEFAULT_DELAY', () => {
 		it('is 300ms', () => {
-			expect(DEFAULT_DEBOUNCE_DELAY).toBe(300);
+			expect(Debounce.DEFAULT_DELAY).toBe(300);
 		});
 	});
 
