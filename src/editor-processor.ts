@@ -38,12 +38,10 @@ export class EditorProcessor {
 
 	/** Active editor for the current processAllLines call. */
 	private editor!: EditorLike;
-	/** Snapshot of all editor lines, mutated during cleanup passes. */
+	/** Snapshot of all editor lines, updated in-place by applyCleanedLine. */
 	private lines!: string[];
 	/** The list block currently being cleaned. */
 	private currentBlock!: { start: number; end: number };
-	/** Lines slice for the block currently being cleaned. */
-	private currentBlockLines!: string[];
 
 	constructor(
 		handler: IndentationHandler,
@@ -98,9 +96,6 @@ export class EditorProcessor {
 
 		for (let b = 0; b < blocks.length; b++) {
 			this.currentBlock = blocks[b]!;
-			this.currentBlockLines = this.lines.slice(
-				this.currentBlock.start, this.currentBlock.end,
-			);
 			const blockIds = this.collectIdsInRange(this.currentBlock);
 
 			this.cleanStaleDeps(blockIds);
@@ -140,11 +135,12 @@ export class EditorProcessor {
 
 	/** Pass 2a: Removes stale `⛔` from former parents within a block. */
 	private cleanStaleDeps(blockIds: Set<string>): void {
-		const relationships = this.handler.buildRelationshipMap(this.currentBlockLines);
-		for (let bi = 0; bi < this.currentBlockLines.length; bi++) {
-			const line = this.currentBlockLines[bi]!;
+		const blockLines = this.lines.slice(this.currentBlock.start, this.currentBlock.end);
+		const relationships = this.handler.buildRelationshipMap(blockLines);
+		for (let bi = 0; bi < blockLines.length; bi++) {
+			const line = blockLines[bi]!;
 			const desiredDeps = this.handler.getDesiredDepsForParent(
-				this.currentBlockLines, bi, relationships,
+				blockLines, bi, relationships,
 			);
 			const cleaned = this.handler.removeStaleDeps(line, desiredDeps, blockIds);
 			if (cleaned !== line) {
@@ -155,8 +151,9 @@ export class EditorProcessor {
 
 	/** Pass 2b: Removes dangling `⛔` that reference deleted `🆔` IDs. */
 	private cleanDanglingDeps(knownIds: Set<string>): void {
-		for (let bi = 0; bi < this.currentBlockLines.length; bi++) {
-			const line = this.currentBlockLines[bi]!;
+		const blockLines = this.lines.slice(this.currentBlock.start, this.currentBlock.end);
+		for (let bi = 0; bi < blockLines.length; bi++) {
+			const line = blockLines[bi]!;
 			const cleaned = this.handler.removeDanglingDeps(line, knownIds);
 			if (cleaned !== line) {
 				this.applyCleanedLine(bi, cleaned);
@@ -166,8 +163,9 @@ export class EditorProcessor {
 
 	/** Pass 2c: Removes orphaned `🆔` with no `⛔` referencing them. */
 	private cleanOrphanedIds(vaultDepIds: Set<string>): void {
-		for (let bi = 0; bi < this.currentBlockLines.length; bi++) {
-			const line = this.currentBlockLines[bi]!;
+		const blockLines = this.lines.slice(this.currentBlock.start, this.currentBlock.end);
+		for (let bi = 0; bi < blockLines.length; bi++) {
+			const line = blockLines[bi]!;
 			const id = this.handler.getTaskId(line);
 			if (
 				id &&
@@ -181,13 +179,12 @@ export class EditorProcessor {
 	}
 
 	/**
-	 * Writes a cleaned line back to the editor and updates both
-	 * the document-level and block-level line arrays.
+	 * Writes a cleaned line back to the editor and updates the
+	 * document-level line array so subsequent passes see current state.
 	 */
 	private applyCleanedLine(blockIndex: number, cleaned: string): void {
 		const docIndex = this.currentBlock.start + blockIndex;
 		this.editor.setLine(docIndex, cleaned);
 		this.lines[docIndex] = cleaned;
-		this.currentBlockLines[blockIndex] = cleaned;
 	}
 }
