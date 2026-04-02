@@ -56,11 +56,11 @@ export class Plugin extends Component {
 	};
 
 	async onload(): Promise<void> {
-		// stub — overridden by subclass
+		// stub, overridden by subclass
 	}
 
 	onunload(): void {
-		// stub — overridden by subclass
+		// stub, overridden by subclass
 	}
 
 	registerInterval(_id: number): number {

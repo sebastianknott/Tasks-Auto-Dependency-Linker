@@ -292,7 +292,7 @@ export class EditorProcessor {
 	): void {
 		const lineCount = editor.lineCount();
 
-		// Pass 1: Link — add 🆔 / ⛔ markers based on indentation
+		// Pass 1: Add 🆔 / ⛔ link markers based on indentation
 		for (let i = 0; i < lineCount; i++) {
 			this.handler.processLine(editor, i, existingIds);
 		}
@@ -337,7 +337,7 @@ export class EditorProcessor {
 			const blockIds = blockIdSets.get(b)!;
 			const relationships = this.handler.buildRelationshipMap(blockLines);
 
-			// Pass 2a: Remove stale ⛔ — only for deps whose 🆔 is in this block
+			// Pass 2a: Remove stale ⛔ (only for deps whose 🆔 is in this block)
 			for (let bi = 0; bi < blockLines.length; bi++) {
 				const line = blockLines[bi]!;
 				const desiredDeps = this.handler.getDesiredDepsForParent(

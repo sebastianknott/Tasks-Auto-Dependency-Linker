@@ -107,7 +107,7 @@ describe('TasksAutoDependencyLinker', () => {
 		it('uses useTab:true as default when vault.getConfig returns undefined', async () => {
 			const p = plugin as PluginInternals;
 
-			// Provide a space-indented task — with useTab:true (default),
+			// Provide a space-indented task. With useTab:true (default),
 			// spaces should NOT count as indentation, so no parent is found
 			const mockEditor = {
 				lineCount: () => 2,
@@ -178,7 +178,7 @@ describe('TasksAutoDependencyLinker', () => {
 			vi.useFakeTimers();
 			wsHandlers[0].cb();
 
-			// Spy on the processActiveEditor effect — getActiveViewOfType
+			// Spy on the processActiveEditor effect via getActiveViewOfType
 			const viewSpy = vi.fn(() => null);
 			p.app.workspace.getActiveViewOfType = viewSpy;
 

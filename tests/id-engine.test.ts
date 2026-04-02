@@ -27,97 +27,93 @@ describe('IdEngine', () => {
 	});
 
 	describe('collectAllIds', () => {
-		it('returns an empty set for empty content', () => {
+		it.each<[string, string, Set<string>]>([
+			[
+				'returns an empty set for empty content',
+				'',
+				new Set(),
+			],
+			[
+				'finds a single ID in content',
+				'- [ ] Parent task 🆔 abc123',
+				new Set(['abc123']),
+			],
+			[
+				'finds multiple IDs across lines',
+				[
+					'- [ ] Task A 🆔 aaa111',
+					'- [ ] Task B 🆔 bbb222',
+					'Some text without ID',
+					'\t- [ ] Task C 🆔 ccc333',
+				].join('\n'),
+				new Set(['aaa111', 'bbb222', 'ccc333']),
+			],
+			[
+				'does not include dependency IDs',
+				'- [ ] Task 🆔 aaa111 ⛔ bbb222',
+				new Set(['aaa111']),
+			],
+			[
+				'handles content with no IDs',
+				'- [ ] Task without ID\n- [ ] Another task',
+				new Set(),
+			],
+		])('%s', (_name, content, expected) => {
 			const engine = new IdEngine();
-			const ids = engine.collectAllIds('');
-			expect(ids.size).toBe(0);
-		});
-
-		it('finds a single ID in content', () => {
-			const engine = new IdEngine();
-			const content = '- [ ] Parent task \u{1F194} abc123';
 			const ids = engine.collectAllIds(content);
-			expect(ids).toEqual(new Set(['abc123']));
-		});
-
-		it('finds multiple IDs across lines', () => {
-			const engine = new IdEngine();
-			const content = [
-				'- [ ] Task A \u{1F194} aaa111',
-				'- [ ] Task B \u{1F194} bbb222',
-				'Some text without ID',
-				'\t- [ ] Task C \u{1F194} ccc333',
-			].join('\n');
-			const ids = engine.collectAllIds(content);
-			expect(ids).toEqual(new Set(['aaa111', 'bbb222', 'ccc333']));
-		});
-
-		it('does not include dependency IDs', () => {
-			const engine = new IdEngine();
-			const content = '- [ ] Task \u{1F194} aaa111 \u26D4 bbb222';
-			const ids = engine.collectAllIds(content);
-			expect(ids).toEqual(new Set(['aaa111']));
-		});
-
-		it('handles content with no IDs', () => {
-			const engine = new IdEngine();
-			const content = '- [ ] Task without ID\n- [ ] Another task';
-			const ids = engine.collectAllIds(content);
-			expect(ids.size).toBe(0);
+			expect(ids).toEqual(expected);
 		});
 	});
 
 	describe('collectAllDepIds', () => {
-		it('returns empty set when content has no deps', () => {
+		it.each<[string, string, Set<string>]>([
+			[
+				'returns empty set when content has no deps',
+				'',
+				new Set(),
+			],
+			[
+				'returns empty set for content with only 🆔 markers',
+				'- [ ] Task 🆔 abc123',
+				new Set(),
+			],
+			[
+				'returns single dep ID from ⛔ marker',
+				'- [ ] Task ⛔ abc123',
+				new Set(['abc123']),
+			],
+			[
+				'returns multiple comma-separated dep IDs',
+				'- [ ] Task ⛔ abc123,def456',
+				new Set(['abc123', 'def456']),
+			],
+			[
+				'returns deps from multiple lines',
+				[
+					'- [ ] Task A ⛔ aaa111',
+					'- [ ] Task B ⛔ bbb222',
+				].join('\n'),
+				new Set(['aaa111', 'bbb222']),
+			],
+			[
+				'handles mixed content (lines with and without deps)',
+				[
+					'- [ ] Task A ⛔ aaa111',
+					'- [ ] Task B 🆔 bbb222',
+					'Some plain text',
+					'- [ ] Task C ⛔ ccc333,ddd444',
+				].join('\n'),
+				new Set(['aaa111', 'ccc333', 'ddd444']),
+			],
+			[
+				'trims whitespace around comma-separated IDs',
+				'- [ ] Task ⛔ abc123 , def456',
+				new Set(['abc123', 'def456']),
+			],
+		])('%s', (_name, content, expected) => {
 			const engine = new IdEngine();
-			const deps = engine.collectAllDepIds('');
-			expect(deps.size).toBe(0);
-		});
-
-		it('returns empty set for content with only 🆔 markers', () => {
-			const engine = new IdEngine();
-			const deps = engine.collectAllDepIds('- [ ] Task 🆔 abc123');
-			expect(deps.size).toBe(0);
-		});
-
-		it('returns single dep ID from ⛔ marker', () => {
-			const engine = new IdEngine();
-			const deps = engine.collectAllDepIds('- [ ] Task ⛔ abc123');
-			expect(deps).toEqual(new Set(['abc123']));
-		});
-
-		it('returns multiple comma-separated dep IDs', () => {
-			const engine = new IdEngine();
-			const deps = engine.collectAllDepIds('- [ ] Task ⛔ abc123,def456');
-			expect(deps).toEqual(new Set(['abc123', 'def456']));
-		});
-
-		it('returns deps from multiple lines', () => {
-			const engine = new IdEngine();
-			const content = [
-				'- [ ] Task A ⛔ aaa111',
-				'- [ ] Task B ⛔ bbb222',
-			].join('\n');
 			const deps = engine.collectAllDepIds(content);
-			expect(deps).toEqual(new Set(['aaa111', 'bbb222']));
-		});
-
-		it('handles mixed content (lines with and without deps)', () => {
-			const engine = new IdEngine();
-			const content = [
-				'- [ ] Task A ⛔ aaa111',
-				'- [ ] Task B 🆔 bbb222',
-				'Some plain text',
-				'- [ ] Task C ⛔ ccc333,ddd444',
-			].join('\n');
-			const deps = engine.collectAllDepIds(content);
-			expect(deps).toEqual(new Set(['aaa111', 'ccc333', 'ddd444']));
-		});
-
-		it('trims whitespace around comma-separated IDs', () => {
-			const engine = new IdEngine();
-			const deps = engine.collectAllDepIds('- [ ] Task ⛔ abc123 , def456');
-			expect(deps).toEqual(new Set(['abc123', 'def456']));
+			expect(deps).toEqual(expected);
 		});
 	});
 
@@ -169,27 +165,29 @@ describe('IdEngine', () => {
 
 describe('IdCache', () => {
 	describe('buildFromFiles', () => {
-		it('returns an empty set for an empty files array', () => {
+		it.each<[string, { path: string; content: string }[], Set<string>]>([
+			[
+				'returns an empty set for an empty files array',
+				[],
+				new Set(),
+			],
+			[
+				'collects IDs from a single file',
+				[{ path: 'note.md', content: '- [ ] Task 🆔 abc123' }],
+				new Set(['abc123']),
+			],
+			[
+				'collects IDs from multiple files',
+				[
+					{ path: 'a.md', content: '- [ ] Task A 🆔 aaa111' },
+					{ path: 'b.md', content: '- [ ] Task B 🆔 bbb222\n- [ ] Task C 🆔 ccc333' },
+				],
+				new Set(['aaa111', 'bbb222', 'ccc333']),
+			],
+		])('%s', (_name, files, expected) => {
 			const cache = new IdCache(new IdEngine());
-			cache.buildFromFiles([]);
-			expect(cache.getIds().size).toBe(0);
-		});
-
-		it('collects IDs from a single file', () => {
-			const cache = new IdCache(new IdEngine());
-			cache.buildFromFiles([
-				{ path: 'note.md', content: '- [ ] Task 🆔 abc123' },
-			]);
-			expect(cache.getIds()).toEqual(new Set(['abc123']));
-		});
-
-		it('collects IDs from multiple files', () => {
-			const cache = new IdCache(new IdEngine());
-			cache.buildFromFiles([
-				{ path: 'a.md', content: '- [ ] Task A 🆔 aaa111' },
-				{ path: 'b.md', content: '- [ ] Task B 🆔 bbb222\n- [ ] Task C 🆔 ccc333' },
-			]);
-			expect(cache.getIds()).toEqual(new Set(['aaa111', 'bbb222', 'ccc333']));
+			cache.buildFromFiles(files);
+			expect(cache.getIds()).toEqual(expected);
 		});
 
 		it('clears previous IDs before rebuilding', () => {
@@ -269,63 +267,77 @@ describe('IdCache', () => {
 	});
 
 	describe('getIdsExcluding', () => {
-		it('returns IDs from all files except the excluded one', () => {
+		it.each<[string, { path: string; content: string }[], string, Set<string>]>([
+			[
+				'returns IDs from all files except the excluded one',
+				[
+					{ path: 'a.md', content: '- [ ] Task 🆔 aaa111' },
+					{ path: 'b.md', content: '- [ ] Task 🆔 bbb222' },
+				],
+				'a.md',
+				new Set(['bbb222']),
+			],
+			[
+				'returns all IDs when excluded path does not exist',
+				[
+					{ path: 'a.md', content: '- [ ] Task 🆔 aaa111' },
+				],
+				'nonexistent.md',
+				new Set(['aaa111']),
+			],
+			[
+				'returns empty set when only file is excluded',
+				[
+					{ path: 'a.md', content: '- [ ] Task 🆔 aaa111' },
+				],
+				'a.md',
+				new Set(),
+			],
+			[
+				'returns empty set for empty cache',
+				[],
+				'a.md',
+				new Set(),
+			],
+			[
+				'combines IDs from multiple non-excluded files',
+				[
+					{ path: 'a.md', content: '- [ ] Task 🆔 aaa111' },
+					{ path: 'b.md', content: '- [ ] Task 🆔 bbb222' },
+					{ path: 'c.md', content: '- [ ] Task 🆔 ccc333' },
+				],
+				'b.md',
+				new Set(['aaa111', 'ccc333']),
+			],
+		])('%s', (_name, files, excludePath, expected) => {
 			const cache = new IdCache(new IdEngine());
-			cache.buildFromFiles([
-				{ path: 'a.md', content: '- [ ] Task 🆔 aaa111' },
-				{ path: 'b.md', content: '- [ ] Task 🆔 bbb222' },
-			]);
-			const ids = cache.getIdsExcluding('a.md');
-			expect(ids).toEqual(new Set(['bbb222']));
-		});
-
-		it('returns all IDs when excluded path does not exist', () => {
-			const cache = new IdCache(new IdEngine());
-			cache.buildFromFiles([
-				{ path: 'a.md', content: '- [ ] Task 🆔 aaa111' },
-			]);
-			const ids = cache.getIdsExcluding('nonexistent.md');
-			expect(ids).toEqual(new Set(['aaa111']));
-		});
-
-		it('returns empty set when only file is excluded', () => {
-			const cache = new IdCache(new IdEngine());
-			cache.buildFromFiles([
-				{ path: 'a.md', content: '- [ ] Task 🆔 aaa111' },
-			]);
-			const ids = cache.getIdsExcluding('a.md');
-			expect(ids.size).toBe(0);
-		});
-
-		it('returns empty set for empty cache', () => {
-			const cache = new IdCache(new IdEngine());
-			cache.buildFromFiles([]);
-			const ids = cache.getIdsExcluding('a.md');
-			expect(ids.size).toBe(0);
-		});
-
-		it('combines IDs from multiple non-excluded files', () => {
-			const cache = new IdCache(new IdEngine());
-			cache.buildFromFiles([
-				{ path: 'a.md', content: '- [ ] Task 🆔 aaa111' },
-				{ path: 'b.md', content: '- [ ] Task 🆔 bbb222' },
-				{ path: 'c.md', content: '- [ ] Task 🆔 ccc333' },
-			]);
-			const ids = cache.getIdsExcluding('b.md');
-			expect(ids).toEqual(new Set(['aaa111', 'ccc333']));
+			cache.buildFromFiles(files);
+			const ids = cache.getIdsExcluding(excludePath);
+			expect(ids).toEqual(expected);
 		});
 	});
 });
 
 describe('DepCache', () => {
 	describe('buildFromFiles', () => {
-		it('populates deps from multiple files', () => {
+		it.each<[string, { path: string; content: string }[], Set<string>]>([
+			[
+				'populates deps from multiple files',
+				[
+					{ path: 'a.md', content: '- [ ] Task A ⛔ aaa111' },
+					{ path: 'b.md', content: '- [ ] Task B ⛔ bbb222\n- [ ] Task C ⛔ ccc333' },
+				],
+				new Set(['aaa111', 'bbb222', 'ccc333']),
+			],
+			[
+				'returns empty set for empty files array',
+				[],
+				new Set(),
+			],
+		])('%s', (_name, files, expected) => {
 			const cache = new DepCache(new IdEngine());
-			cache.buildFromFiles([
-				{ path: 'a.md', content: '- [ ] Task A ⛔ aaa111' },
-				{ path: 'b.md', content: '- [ ] Task B ⛔ bbb222\n- [ ] Task C ⛔ ccc333' },
-			]);
-			expect(cache.getDeps()).toEqual(new Set(['aaa111', 'bbb222', 'ccc333']));
+			cache.buildFromFiles(files);
+			expect(cache.getDeps()).toEqual(expected);
 		});
 
 		it('clears previous deps before rebuilding', () => {
@@ -338,12 +350,6 @@ describe('DepCache', () => {
 			]);
 			expect(cache.getDeps()).toEqual(new Set(['new222']));
 			expect(cache.getDeps().has('old111')).toBe(false);
-		});
-
-		it('returns empty set for empty files array', () => {
-			const cache = new DepCache(new IdEngine());
-			cache.buildFromFiles([]);
-			expect(cache.getDeps().size).toBe(0);
 		});
 	});
 

@@ -24,177 +24,129 @@ describe('IndentationHandler', () => {
 	const idEngine = new IdEngine();
 
 	describe('findParentTask', () => {
-		it('returns null when the line is at root level', () => {
+		it.each<[string, string[], number, number | null]>([
+			[
+				'returns null when the line is at root level',
+				['- [ ] Root task'],
+				0,
+				null,
+			],
+			[
+				'finds the immediate parent task above',
+				['- [ ] Parent', '\t- [ ] Child'],
+				1,
+				0,
+			],
+			[
+				'stops at a list boundary (non-list text between tasks)',
+				['- [ ] Parent', 'Some text', '\t- [ ] Child'],
+				2,
+				null,
+			],
+			[
+				'finds the correct parent at multiple indent levels',
+				['- [ ] Grandparent', '\t- [ ] Parent', '\t\t- [ ] Child'],
+				2,
+				1,
+			],
+			[
+				'returns null when no parent task exists above',
+				['Some text', '\t- [ ] Indented task'],
+				1,
+				null,
+			],
+			[
+				'returns null for a non-task line',
+				['- [ ] Task', '\tSome indented text'],
+				1,
+				null,
+			],
+			[
+				'skips tasks at the same indent level (siblings)',
+				['- [ ] Parent', '\t- [ ] Sibling A', '\t- [ ] Sibling B'],
+				2,
+				0,
+			],
+			[
+				'returns null at line 0',
+				['\t- [ ] Indented at top'],
+				0,
+				null,
+			],
+			[
+				'returns null for root-level task even when tasks exist below',
+				['- [ ] Root', '\t- [ ] Child below'],
+				0,
+				null,
+			],
+			[
+				'returns null for a second root-level task after another root task',
+				['- [ ] First root', '- [ ] Second root'],
+				1,
+				null,
+			],
+			[
+				'finds parent directly above, not below',
+				['- [ ] Parent above', '\t- [ ] Current child', '- [ ] Task below'],
+				1,
+				0,
+			],
+			[
+				'returns null when indented task is first line with a potential parent below',
+				['\t- [ ] Indented child', '- [ ] Would-be parent below'],
+				0,
+				null,
+			],
+			[
+				'stops at a list boundary (blank line between lists)',
+				['- [ ] Parent in list A', '', '\t- [ ] Child in list B'],
+				2,
+				null,
+			],
+			[
+				'stops at a list boundary (heading between lists)',
+				['- [ ] Parent in list A', '## Section Two', '\t- [ ] Child in list B'],
+				2,
+				null,
+			],
+			[
+				'allows non-task list items within the same list',
+				['- [ ] Parent task', '- plain bullet', '\t- [ ] Child task'],
+				2,
+				0,
+			],
+			[
+				'stops at whitespace-only line (list boundary)',
+				['- [ ] Parent', '   ', '\t- [ ] Child'],
+				2,
+				null,
+			],
+		])('%s', (_description, lines, lineIndex, expected) => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const lines = ['- [ ] Root task'];
-			expect(handler.findParentTask(lines, 0)).toBeNull();
-		});
-
-		it('finds the immediate parent task above', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent',
-				'\t- [ ] Child',
-			];
-			expect(handler.findParentTask(lines, 1)).toBe(0);
-		});
-
-		it('stops at a list boundary (non-list text between tasks)', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent',
-				'Some text',
-				'\t- [ ] Child',
-			];
-			// 'Some text' is not a list item — it's a list boundary
-			expect(handler.findParentTask(lines, 2)).toBeNull();
-		});
-
-		it('finds the correct parent at multiple indent levels', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Grandparent',
-				'\t- [ ] Parent',
-				'\t\t- [ ] Child',
-			];
-			expect(handler.findParentTask(lines, 2)).toBe(1);
-		});
-
-		it('returns null when no parent task exists above', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'Some text',
-				'\t- [ ] Indented task',
-			];
-			expect(handler.findParentTask(lines, 1)).toBeNull();
-		});
-
-		it('returns null for a non-task line', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Task',
-				'\tSome indented text',
-			];
-			expect(handler.findParentTask(lines, 1)).toBeNull();
-		});
-
-		it('skips tasks at the same indent level (siblings)', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent',
-				'\t- [ ] Sibling A',
-				'\t- [ ] Sibling B',
-			];
-			expect(handler.findParentTask(lines, 2)).toBe(0);
-		});
-
-		it('returns null at line 0', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = ['\t- [ ] Indented at top'];
-			expect(handler.findParentTask(lines, 0)).toBeNull();
-		});
-
-		it('returns null for root-level task even when tasks exist below', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Root',
-				'\t- [ ] Child below',
-			];
-			// Root at indent 0 should never search for a parent
-			expect(handler.findParentTask(lines, 0)).toBeNull();
-		});
-
-		it('returns null for a second root-level task after another root task', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] First root',
-				'- [ ] Second root',
-			];
-			// Second root at indent 0: without the guard it would search
-			// upward and find "First root" at the same level (not lower),
-			// so the loop returns null anyway. But with lineIndex+1 mutation,
-			// it would go out of bounds. We verify null is returned correctly.
-			expect(handler.findParentTask(lines, 1)).toBeNull();
-		});
-
-		it('finds parent directly above, not below', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent above',
-				'\t- [ ] Current child',
-				'- [ ] Task below',
-			];
-			// Must find parent at index 0 (above), not index 2 (below)
-			expect(handler.findParentTask(lines, 1)).toBe(0);
-		});
-
-		it('returns null when indented task is first line with a potential parent below', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'\t- [ ] Indented child',
-				'- [ ] Would-be parent below',
-			];
-			// No parent exists above index 0 — must return null,
-			// even though a lower-indent task exists below
-			expect(handler.findParentTask(lines, 0)).toBeNull();
-		});
-
-		it('stops at a list boundary (blank line between lists)', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent in list A',
-				'',
-				'\t- [ ] Child in list B',
-			];
-			// Blank line is a list boundary — child should NOT find parent
-			expect(handler.findParentTask(lines, 2)).toBeNull();
-		});
-
-		it('stops at a list boundary (heading between lists)', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent in list A',
-				'## Section Two',
-				'\t- [ ] Child in list B',
-			];
-			// Heading is a list boundary — child should NOT find parent
-			expect(handler.findParentTask(lines, 2)).toBeNull();
-		});
-
-		it('allows non-task list items within the same list', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent task',
-				'- plain bullet',
-				'\t- [ ] Child task',
-			];
-			// '- plain bullet' is a list item (not a boundary), so the
-			// search continues upward and finds the parent task at index 0
-			expect(handler.findParentTask(lines, 2)).toBe(0);
-		});
-
-		it('stops at whitespace-only line (list boundary)', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent',
-				'   ',
-				'\t- [ ] Child',
-			];
-			// Whitespace-only line is not a list item — it's a boundary
-			expect(handler.findParentTask(lines, 2)).toBeNull();
+			expect(handler.findParentTask(lines, lineIndex)).toBe(expected);
 		});
 	});
 
 	describe('buildRelationshipMap', () => {
-		it('returns empty map for no lines', () => {
+		it.each<[string, string[], Map<number, number>]>([
+			[
+				'returns empty map for no lines',
+				[],
+				new Map(),
+			],
+			[
+				'returns empty map for root-level tasks only',
+				['- [ ] A', '- [ ] B'],
+				new Map(),
+			],
+			[
+				'does not link across a list boundary (non-list text)',
+				['- [ ] Parent', 'Some text', '\t- [ ] Child'],
+				new Map(),
+			],
+		])('%s', (_description, lines, expectedMap) => {
 			const handler = new IndentationHandler(parser, idEngine);
-			expect(handler.buildRelationshipMap([])).toEqual(new Map());
-		});
-
-		it('returns empty map for root-level tasks only', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = ['- [ ] A', '- [ ] B'];
-			expect(handler.buildRelationshipMap(lines)).toEqual(new Map());
+			expect(handler.buildRelationshipMap(lines)).toEqual(expectedMap);
 		});
 
 		it('maps child to parent based on indentation', () => {
@@ -218,18 +170,6 @@ describe('IndentationHandler', () => {
 			expect(map.size).toBe(2);
 		});
 
-		it('does not link across a list boundary (non-list text)', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Parent',
-				'Some text',
-				'\t- [ ] Child',
-			];
-			const map = handler.buildRelationshipMap(lines);
-			// 'Some text' is a list boundary — child cannot find parent
-			expect(map.size).toBe(0);
-		});
-
 		it('does not access beyond the lines array bounds', () => {
 			const handler = new IndentationHandler(parser, idEngine);
 			const lines = [
@@ -245,88 +185,50 @@ describe('IndentationHandler', () => {
 	});
 
 	describe('identifyListBlocks', () => {
-		it('returns empty array for no lines', () => {
+		it.each<[string, string[], Array<{ start: number; end: number }>]>([
+			[
+				'returns empty array for no lines',
+				[],
+				[],
+			],
+			[
+				'returns one block for a single list item',
+				['- [ ] Task'],
+				[{ start: 0, end: 1 }],
+			],
+			[
+				'returns one block for two consecutive list items',
+				['- [ ] Task A', '\t- [ ] Task B'],
+				[{ start: 0, end: 2 }],
+			],
+			[
+				'returns two blocks separated by a blank line',
+				['- [ ] Task A', '', '- [ ] Task B'],
+				[{ start: 0, end: 1 }, { start: 2, end: 3 }],
+			],
+			[
+				'returns two blocks separated by a heading',
+				['- [ ] Task A', '## Section', '- [ ] Task B'],
+				[{ start: 0, end: 1 }, { start: 2, end: 3 }],
+			],
+			[
+				'excludes non-list content at start and end',
+				['# Heading', '- [ ] Task A', '- [ ] Task B', 'Some paragraph'],
+				[{ start: 1, end: 3 }],
+			],
+			[
+				'includes non-task list items in the same block',
+				['- [ ] Task A', '- plain bullet', '- [ ] Task B'],
+				[{ start: 0, end: 3 }],
+			],
+			[
+				'handles multiple blocks with non-list content between them',
+				['- [ ] List 1 task A', '\t- [ ] List 1 task B', '', '# Heading', '- [ ] List 2 task A', '- [ ] List 2 task B'],
+				[{ start: 0, end: 2 }, { start: 4, end: 6 }],
+			],
+		])('%s', (_description, lines, expectedBlocks) => {
 			const handler = new IndentationHandler(parser, idEngine);
-			expect(handler.identifyListBlocks([])).toEqual([]);
-		});
-
-		it('returns one block for a single list item', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = ['- [ ] Task'];
-			expect(handler.identifyListBlocks(lines)).toEqual([{ start: 0, end: 1 }]);
-		});
-
-		it('returns one block for two consecutive list items', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = ['- [ ] Task A', '\t- [ ] Task B'];
-			expect(handler.identifyListBlocks(lines)).toEqual([{ start: 0, end: 2 }]);
-		});
-
-		it('returns two blocks separated by a blank line', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Task A',
-				'',
-				'- [ ] Task B',
-			];
-			expect(handler.identifyListBlocks(lines)).toEqual([
-				{ start: 0, end: 1 },
-				{ start: 2, end: 3 },
-			]);
-		});
-
-		it('returns two blocks separated by a heading', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Task A',
-				'## Section',
-				'- [ ] Task B',
-			];
-			expect(handler.identifyListBlocks(lines)).toEqual([
-				{ start: 0, end: 1 },
-				{ start: 2, end: 3 },
-			]);
-		});
-
-		it('excludes non-list content at start and end', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'# Heading',
-				'- [ ] Task A',
-				'- [ ] Task B',
-				'Some paragraph',
-			];
-			expect(handler.identifyListBlocks(lines)).toEqual([
-				{ start: 1, end: 3 },
-			]);
-		});
-
-		it('includes non-task list items in the same block', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Task A',
-				'- plain bullet',
-				'- [ ] Task B',
-			];
-			expect(handler.identifyListBlocks(lines)).toEqual([
-				{ start: 0, end: 3 },
-			]);
-		});
-
-		it('handles multiple blocks with non-list content between them', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] List 1 task A',
-				'\t- [ ] List 1 task B',
-				'',
-				'# Heading',
-				'- [ ] List 2 task A',
-				'- [ ] List 2 task B',
-			];
-			expect(handler.identifyListBlocks(lines)).toEqual([
-				{ start: 0, end: 2 },
-				{ start: 4, end: 6 },
-			]);
+			expect(handler.identifyListBlocks(lines)).toEqual(expectedBlocks);
 		});
 
 		it('does not access beyond the lines array bounds', () => {
@@ -405,85 +307,86 @@ describe('IndentationHandler', () => {
 	});
 
 	describe('removeStaleDeps', () => {
-		it('returns line unchanged when all deps are desired', () => {
+		it.each<[string, string, Set<string>, string]>([
+			[
+				'returns line unchanged when all deps are desired',
+				'- [ ] Parent ⛔ abc123',
+				new Set(['abc123']),
+				'- [ ] Parent ⛔ abc123',
+			],
+			[
+				'removes deps not in desired set',
+				'- [ ] Parent ⛔ abc123,def456',
+				new Set(['def456']),
+				'- [ ] Parent ⛔ def456',
+			],
+			[
+				'removes all deps when desired set is empty',
+				'- [ ] Parent ⛔ abc123,def456',
+				new Set(),
+				'- [ ] Parent',
+			],
+			[
+				'returns line unchanged when no deps exist',
+				'- [ ] Parent',
+				new Set(),
+				'- [ ] Parent',
+			],
+		])('%s', (_description, line, desiredSet, expected) => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const line = '- [ ] Parent ⛔ abc123';
-			const result = handler.removeStaleDeps(line, new Set(['abc123']));
-			expect(result).toBe(line);
-		});
-
-		it('removes deps not in desired set', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const line = '- [ ] Parent ⛔ abc123,def456';
-			const result = handler.removeStaleDeps(line, new Set(['def456']));
-			expect(result).toBe('- [ ] Parent ⛔ def456');
-		});
-
-		it('removes all deps when desired set is empty', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const line = '- [ ] Parent ⛔ abc123,def456';
-			const result = handler.removeStaleDeps(line, new Set());
-			expect(result).toBe('- [ ] Parent');
-		});
-
-		it('returns line unchanged when no deps exist', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const line = '- [ ] Parent';
-			const result = handler.removeStaleDeps(line, new Set());
-			expect(result).toBe(line);
+			expect(handler.removeStaleDeps(line, desiredSet)).toBe(expected);
 		});
 	});
 
 	describe('isIdReferencedAsDep', () => {
-		it('returns true when a line has ⛔ for the ID', () => {
+		it.each<[string, string[], string, boolean]>([
+			[
+				'returns true when a line has ⛔ for the ID',
+				['- [ ] Parent ⛔ abc123'],
+				'abc123',
+				true,
+			],
+			[
+				'returns false when no line has ⛔ for the ID',
+				['- [ ] Parent ⛔ def456'],
+				'abc123',
+				false,
+			],
+			[
+				'returns false for empty lines array',
+				[],
+				'abc123',
+				false,
+			],
+			[
+				'searches across multiple lines',
+				['- [ ] Task A', '- [ ] Task B ⛔ abc123'],
+				'abc123',
+				true,
+			],
+		])('%s', (_description, lines, id, expected) => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const lines = ['- [ ] Parent ⛔ abc123'];
-			expect(handler.isIdReferencedAsDep(lines, 'abc123')).toBe(true);
-		});
-
-		it('returns false when no line has ⛔ for the ID', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = ['- [ ] Parent ⛔ def456'];
-			expect(handler.isIdReferencedAsDep(lines, 'abc123')).toBe(false);
-		});
-
-		it('returns false for empty lines array', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			expect(handler.isIdReferencedAsDep([], 'abc123')).toBe(false);
-		});
-
-		it('searches across multiple lines', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const lines = [
-				'- [ ] Task A',
-				'- [ ] Task B ⛔ abc123',
-			];
-			expect(handler.isIdReferencedAsDep(lines, 'abc123')).toBe(true);
+			expect(handler.isIdReferencedAsDep(lines, id)).toBe(expected);
 		});
 	});
 
 	describe('getTaskId', () => {
-		it('delegates to TaskParser and returns the ID', () => {
+		it.each<[string, string, string | null]>([
+			['delegates to TaskParser and returns the ID', '- [ ] Task 🆔 abc123', 'abc123'],
+			['returns null when no ID exists', '- [ ] No ID', null],
+		])('%s', (_description, input, expected) => {
 			const handler = new IndentationHandler(parser, idEngine);
-			expect(handler.getTaskId('- [ ] Task 🆔 abc123')).toBe('abc123');
-		});
-
-		it('returns null when no ID exists', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			expect(handler.getTaskId('- [ ] No ID')).toBeNull();
+			expect(handler.getTaskId(input)).toBe(expected);
 		});
 	});
 
 	describe('removeIdFromLine', () => {
-		it('delegates to TaskParser and removes the ID', () => {
+		it.each<[string, string, string]>([
+			['delegates to TaskParser and removes the ID', '- [ ] Task 🆔 abc123', '- [ ] Task'],
+			['returns line unchanged when no ID exists', '- [ ] No ID', '- [ ] No ID'],
+		])('%s', (_description, input, expected) => {
 			const handler = new IndentationHandler(parser, idEngine);
-			expect(handler.removeIdFromLine('- [ ] Task 🆔 abc123')).toBe('- [ ] Task');
-		});
-
-		it('returns line unchanged when no ID exists', () => {
-			const handler = new IndentationHandler(parser, idEngine);
-			const line = '- [ ] No ID';
-			expect(handler.removeIdFromLine(line)).toBe(line);
+			expect(handler.removeIdFromLine(input)).toBe(expected);
 		});
 	});
 
@@ -793,7 +696,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds);
 
-			// 🆔 should be preserved — parent still depends on it
+			// 🆔 should be preserved because the parent still depends on it
 			expect(lines[1]).toContain('🆔 abc123');
 			expect(lines[0]).toContain('⛔ abc123');
 		});
@@ -854,7 +757,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds);
 
-			// ⛔ is valid — child is still indented under parent
+			// ⛔ is valid because the child is still indented under parent
 			expect(lines[0]).toContain('⛔ abc123');
 			expect(lines[1]).toContain('🆔 abc123');
 		});
@@ -879,7 +782,7 @@ describe('EditorProcessor', () => {
 		it('does not call setLine during orphan cleanup when no 🆔 needs removal', () => {
 			const handler = new IndentationHandler(parser, idEngine);
 			const processor = new EditorProcessor(handler);
-			// Parent has ⛔ for child, child has 🆔 — all is correct, nothing to clean
+			// Parent has ⛔ for child, child has 🆔. All is correct, nothing to clean
 			const lines = [
 				'- [ ] Parent ⛔ abc123',
 				'\t- [ ] Child 🆔 abc123',
@@ -942,9 +845,9 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds);
 
-			// 🆔 on Task A must be preserved — it's in a different list from ⛔
+			// 🆔 on Task A must be preserved since it's in a different list from ⛔
 			expect(lines[0]).toContain('🆔 abc123');
-			// ⛔ on Task B must be preserved — it's in a different list
+			// ⛔ on Task B must be preserved since it's in a different list
 			expect(lines[2]).toContain('⛔ abc123');
 		});
 
@@ -963,9 +866,9 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds);
 
-			// ⛔ on Parent must be preserved — cross-list reference
+			// ⛔ on Parent must be preserved (cross-list reference)
 			expect(lines[0]).toContain('⛔ abc123');
-			// 🆔 on Child must be preserved — cross-list reference
+			// 🆔 on Child must be preserved (cross-list reference)
 			expect(lines[2]).toContain('🆔 abc123');
 		});
 
@@ -1033,7 +936,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds);
 
-			// ⛔ abc123 should be removed — no 🆔 abc123 exists in document
+			// ⛔ abc123 should be removed because no 🆔 abc123 exists in document
 			expect(lines[0]).toBe('- [ ] Parent');
 		});
 
@@ -1069,7 +972,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds);
 
-			// ⛔ deleted1 references a non-existent 🆔 — must be removed
+			// ⛔ deleted1 references a non-existent 🆔 and must be removed
 			expect(lines[0]).not.toContain('deleted1');
 		});
 
@@ -1087,7 +990,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds, vaultDepIds, otherVaultIds);
 
-			// ⛔ preserved — 🆔 exists in another vault file
+			// ⛔ preserved because 🆔 exists in another vault file
 			expect(lines[0]).toContain('⛔ abc123');
 		});
 
@@ -1103,7 +1006,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds, vaultDepIds);
 
-			// ⛔ ghost1 references a completely non-existent 🆔 — remove it
+			// ⛔ ghost1 references a completely non-existent 🆔, so remove it
 			expect(lines[0]).toBe('- [ ] Parent');
 		});
 
@@ -1122,7 +1025,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds);
 
-			// ⛔ preserved — 🆔 abc123 exists in the document
+			// ⛔ preserved because 🆔 abc123 exists in the document
 			expect(lines[0]).toContain('⛔ abc123');
 		});
 
@@ -1159,7 +1062,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds, vaultDepIds);
 
-			// 🆔 should be preserved — it's referenced in another vault file
+			// 🆔 should be preserved because it's referenced in another vault file
 			expect(lines[0]).toContain('🆔 abc123');
 		});
 
@@ -1171,11 +1074,11 @@ describe('EditorProcessor', () => {
 			];
 			const editor = createMockEditor(lines);
 			const existingIds = new Set(['abc123']);
-			const vaultDepIds = new Set<string>(); // empty — no cross-file refs
+			const vaultDepIds = new Set<string>(); // empty, no cross-file refs
 
 			processor.processAllLines(editor, existingIds, vaultDepIds);
 
-			// 🆔 should be removed — no local or vault-wide reference
+			// 🆔 should be removed since there is no local or vault-wide reference
 			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
 		});
 
@@ -1188,7 +1091,7 @@ describe('EditorProcessor', () => {
 			const editor = createMockEditor(lines);
 			const existingIds = new Set(['abc123']);
 
-			// No vaultDepIds passed — should behave as before (remove orphaned 🆔)
+			// No vaultDepIds passed, should behave as before (remove orphaned 🆔)
 			processor.processAllLines(editor, existingIds);
 
 			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
@@ -1224,7 +1127,7 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, existingIds, vaultDepIds);
 
-			// Both 🆔 should be preserved — both referenced in vault
+			// Both 🆔 should be preserved because both are referenced in vault
 			expect(lines[0]).toContain('🆔 aaa111');
 			expect(lines[1]).toContain('🆔 bbb222');
 		});

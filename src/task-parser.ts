@@ -41,7 +41,7 @@ export class TaskParser {
 	 * Captures the comma-separated dependency ID list after a single `⛔` emoji.
 	 * Matches format: `⛔ id1,id2,id3` (with optional spaces around commas).
 	 * Tolerates `[a-zA-Z0-9_-]+` for each ID.
-	 * No `$` anchor — the `⛔` marker may appear before a `🆔` marker.
+	 * No `$` anchor because the `⛔` marker may appear before a `🆔` marker.
 	 */
 	static readonly DEP_REGEX = /⛔\s([a-zA-Z0-9_-]+(?:\s*,\s*[a-zA-Z0-9_-]+)*)/;
 
