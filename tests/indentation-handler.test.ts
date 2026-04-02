@@ -1019,6 +1019,131 @@ describe('EditorProcessor', () => {
 		});
 	});
 
+	describe('deleted child cleanup', () => {
+		it('removes ⛔ from parent when child task line was deleted', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// Scenario: child task was deleted, but parent still has ⛔ referencing
+			// the deleted child's ID. No 🆔 abc123 exists anywhere in the document.
+			const lines = [
+				'- [ ] Parent ⛔ abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set<string>();
+
+			processor.processAllLines(editor, existingIds);
+
+			// ⛔ abc123 should be removed — no 🆔 abc123 exists in document
+			expect(lines[0]).toBe('- [ ] Parent');
+		});
+
+		it('removes only the deleted child dep while keeping valid deps', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// Parent has two deps. Child def456 still exists, abc123 was deleted.
+			const lines = [
+				'- [ ] Parent ⛔ abc123,def456',
+				'\t- [ ] Remaining child 🆔 def456',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['def456']);
+
+			processor.processAllLines(editor, existingIds);
+
+			// abc123 should be removed (no 🆔 exists), def456 should stay
+			expect(lines[0]).toContain('⛔ def456');
+			expect(lines[0]).not.toContain('abc123');
+		});
+
+		it('removes ⛔ for deleted child even when not in managedIds', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// The deleted child's 🆔 is gone from the block, so its ID won't be
+			// in blockIds (managedIds). The cleanup should still remove it.
+			const lines = [
+				'- [ ] Parent ⛔ deleted1',
+				'\t- [ ] Child A',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set<string>();
+
+			processor.processAllLines(editor, existingIds);
+
+			// ⛔ deleted1 references a non-existent 🆔 — must be removed
+			expect(lines[0]).not.toContain('deleted1');
+		});
+
+		it('preserves ⛔ when referenced 🆔 exists in another vault file (cross-file)', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// ⛔ abc123 has no local 🆔, but it exists in another vault file
+			const lines = [
+				'- [ ] Parent ⛔ abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set(['abc123']); // exists in vault
+			const vaultDepIds = new Set<string>();
+			const otherVaultIds = new Set(['abc123']); // exists in another file
+
+			processor.processAllLines(editor, existingIds, vaultDepIds, otherVaultIds);
+
+			// ⛔ preserved — 🆔 exists in another vault file
+			expect(lines[0]).toContain('⛔ abc123');
+		});
+
+		it('removes ⛔ when referenced 🆔 does not exist in vault either', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			const lines = [
+				'- [ ] Parent ⛔ ghost1',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set<string>(); // ghost1 not in vault
+			const vaultDepIds = new Set<string>();
+
+			processor.processAllLines(editor, existingIds, vaultDepIds);
+
+			// ⛔ ghost1 references a completely non-existent 🆔 — remove it
+			expect(lines[0]).toBe('- [ ] Parent');
+		});
+
+		it('preserves ⛔ when 🆔 exists in document but not in existingIds', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// The ⛔ references an 🆔 that exists in the DOCUMENT (different block)
+			// but is not in existingIds. The documentIds scan should find it.
+			const lines = [
+				'- [ ] Parent ⛔ abc123',
+				'',
+				'- [ ] Other task 🆔 abc123',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set<string>(); // not in vault cache
+
+			processor.processAllLines(editor, existingIds);
+
+			// ⛔ preserved — 🆔 abc123 exists in the document
+			expect(lines[0]).toContain('⛔ abc123');
+		});
+
+		it('removes dangling ⛔ from non-first line in a list block', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const processor = new EditorProcessor(handler);
+			// Second line (bi=1) has a dangling ⛔ for a deleted child
+			const lines = [
+				'- [ ] Parent A',
+				'\t- [ ] Parent B ⛔ deleted1',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set<string>();
+
+			processor.processAllLines(editor, existingIds);
+
+			// ⛔ deleted1 on second line should be removed (no 🆔 deleted1 exists)
+			expect(lines[1]).not.toContain('deleted1');
+		});
+	});
+
 	describe('cross-file vault dep IDs', () => {
 		it('does not remove 🆔 when the ID is in vaultDepIds (cross-file reference)', () => {
 			const handler = new IndentationHandler(parser, idEngine);
