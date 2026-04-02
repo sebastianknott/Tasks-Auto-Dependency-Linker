@@ -1,1 +1,14 @@
 (C) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy
+(B) Split IndentationHandler into RelationshipAnalyzer (structural analysis) and keep line-level cleanup in EditorProcessor or a MarkerCleaner +refactor @lchc
+(B) Give EditorProcessor direct access to TaskParser via constructor injection, remove middle-man delegation methods (getTaskId, removeIdFromLine) from IndentationHandler +refactor @lchc
+(B) Extract five passes in processAllLines into named private methods (linkPass, cleanupStaleDeps, cleanupDanglingDeps, cleanupOrphanedIds) +refactor @lchc
+(B) Unify IdCache and DepCache into a generic MarkerCache parameterized by the extraction function to eliminate duplication +refactor @lchc
+(B) Move collectAllIds and collectAllDepIds from IdEngine to TaskParser (or a ContentScanner class), since they parse content not generate IDs +refactor @lchc
+(B) Eliminate existingIds mutation side effect in processLine by returning the newly generated ID instead of mutating the caller Set +refactor @lchc
+(B) Fix processLine O(N^2) performance: it rebuilds the entire lines array on every call; read lines once and pass them in +refactor @cleancode
+(B) Move DEFAULT_INDENT_CONFIG to static readonly on TaskParser and DEFAULT_DEBOUNCE_DELAY to static readonly on Debounce per project coding style +refactor @cleancode
+(B) Eliminate shared mutable lines array across passes in processAllLines; each pass should work on a fresh snapshot or use an immutable approach +refactor @cleancode
+(B) Fix ESLint max-lines-per-function: processAllLines has 88 lines (max 50), extract passes into private methods +eslint @cleancode
+(B) Fix ESLint max-params: processAllLines has 4 params (max 3), introduce an options object for existingIds, vaultDepIds, otherVaultIds +eslint @cleancode
+(B) Fix ESLint complexity: processAllLines has complexity 18 (max 10), reduce by extracting loop bodies into separate methods +eslint @cleancode
+(B) Set up FTA (Fast TypeScript Analyzer): install fta-cli, create fta.json with score_cap 60, add npm script, integrate into check pipeline +tooling @staticanalysis

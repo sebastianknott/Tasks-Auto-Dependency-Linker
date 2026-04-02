@@ -22,6 +22,35 @@ export default tseslint.config(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		files: ['src/**/*.ts'],
+		plugins: {
+			'@typescript-eslint': tseslint.plugin,
+		},
+		rules: {
+			// Clean Code: cyclomatic complexity per function (default 20 is too generous)
+			'complexity': ['error', { max: 10 }],
+
+			// Clean Code: max lines per function (excluding blank lines and comments)
+			'max-lines-per-function': ['error', {
+				max: 50,
+				skipBlankLines: true,
+				skipComments: true,
+			}],
+
+			// Clean Code: max nesting depth per function
+			'max-depth': ['error', { max: 4 }],
+
+			// Clean Code: max function parameters (prefer options objects beyond 3)
+			'max-params': ['error', { max: 3 }],
+
+			// Clean Code: prevent mutation of function parameters (hidden side effects)
+			'no-param-reassign': 'error',
+
+			// TypeScript: enforce readonly on private members that are never reassigned
+			'@typescript-eslint/prefer-readonly': 'error',
+		},
+	},
 	globalIgnores([
 		"node_modules",
 		"dist",
