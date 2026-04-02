@@ -13,7 +13,8 @@
 		"test:watch": "vitest",
 		"test:mutation": "stryker run",
 		"test:mutation:incremental": "stryker run --incremental",
-		"check": "npm run lint && tsc -noEmit -skipLibCheck && npm test && npm run build"
+		"fta": "fta src",
+		"check": "npm run lint && tsc -noEmit -skipLibCheck && npm run fta && npm test && npm run build"
 	},
 	"keywords": [
 		"obsidian",
@@ -30,6 +31,7 @@
 		"@types/node": "^22.0.0",
 		"esbuild": "0.25.5",
 		"eslint-plugin-obsidianmd": "0.1.9",
+		"fta-cli": "^3.0.0",
 		"globals": "14.0.0",
 		"jiti": "2.6.1",
 		"tslib": "2.4.0",

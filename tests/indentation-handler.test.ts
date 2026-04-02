@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { IndentationHandler, EditorProcessor } from '../src/indentation-handler';
+import { IndentationHandler } from '../src/indentation-handler';
+import { EditorProcessor, type IdCacheLike, type DepCacheLike } from '../src/editor-processor';
 import { TaskParser, DEFAULT_INDENT_CONFIG } from '../src/task-parser';
 import { IdEngine } from '../src/id-engine';
 
@@ -528,21 +529,34 @@ describe('IndentationHandler', () => {
 	});
 });
 
+function createIdCache(ids: Set<string>, excludedIds?: Set<string>): IdCacheLike {
+	return {
+		getIds: () => ids,
+		getIdsExcluding: () => excludedIds ?? new Set<string>(),
+	};
+}
+
+function createDepCache(deps?: Set<string>): DepCacheLike {
+	return {
+		getDeps: () => deps ?? new Set<string>(),
+	};
+}
+
 describe('EditorProcessor', () => {
 	const parser = new TaskParser(DEFAULT_INDENT_CONFIG);
 	const idEngine = new IdEngine();
 
 	it('processes all lines in the editor', () => {
 		const handler = new IndentationHandler(parser, idEngine);
-		const processor = new EditorProcessor(handler);
+		const existingIds = new Set<string>();
+		const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 		const lines = [
 			'- [ ] Parent',
 			'\t- [ ] Child',
 		];
 		const editor = createMockEditor(lines);
-		const existingIds = new Set<string>();
 
-		processor.processAllLines(editor, existingIds);
+		processor.processAllLines(editor, '');
 
 		// Child should have an ID (it blocks the parent)
 		expect(lines[1]).toMatch(/🆔 [a-z0-9]{6}/);
@@ -553,28 +567,28 @@ describe('EditorProcessor', () => {
 
 	it('does nothing for an empty editor', () => {
 		const handler = new IndentationHandler(parser, idEngine);
-		const processor = new EditorProcessor(handler);
+		const existingIds = new Set<string>();
+		const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 		const lines: string[] = [];
 		const editor = createMockEditor(lines);
-		const existingIds = new Set<string>();
 
-		processor.processAllLines(editor, existingIds);
+		processor.processAllLines(editor, '');
 
 		expect(editor.setLine).not.toHaveBeenCalled();
 	});
 
 	it('processes a multi-level hierarchy', () => {
 		const handler = new IndentationHandler(parser, idEngine);
-		const processor = new EditorProcessor(handler);
+		const existingIds = new Set<string>();
+		const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 		const lines = [
 			'- [ ] Grandparent',
 			'\t- [ ] Parent',
 			'\t\t- [ ] Child',
 		];
 		const editor = createMockEditor(lines);
-		const existingIds = new Set<string>();
 
-		processor.processAllLines(editor, existingIds);
+		processor.processAllLines(editor, '');
 
 		// Parent should have an ID (it blocks grandparent)
 		expect(lines[1]).toMatch(/🆔 [a-z0-9]{6}/);
@@ -591,7 +605,7 @@ describe('EditorProcessor', () => {
 	it('calls processLine exactly lineCount times', () => {
 		const handler = new IndentationHandler(parser, idEngine);
 		const spy = vi.spyOn(handler, 'processLine');
-		const processor = new EditorProcessor(handler);
+		const processor = new EditorProcessor(handler, createIdCache(new Set<string>()), createDepCache());
 		const lines = [
 			'- [ ] Task A',
 			'- [ ] Task B',
@@ -599,7 +613,7 @@ describe('EditorProcessor', () => {
 		];
 		const editor = createMockEditor(lines);
 
-		processor.processAllLines(editor, new Set());
+		processor.processAllLines(editor, '');
 
 		expect(spy).toHaveBeenCalledTimes(3);
 		spy.mockRestore();
@@ -607,16 +621,16 @@ describe('EditorProcessor', () => {
 
 	it('skips non-task lines without modifying them', () => {
 		const handler = new IndentationHandler(parser, idEngine);
-		const processor = new EditorProcessor(handler);
+		const existingIds = new Set<string>();
+		const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 		const lines = [
 			'# Heading',
 			'- [ ] Root task',
 			'Some text',
 		];
 		const editor = createMockEditor(lines);
-		const existingIds = new Set<string>();
 
-		processor.processAllLines(editor, existingIds);
+		processor.processAllLines(editor, '');
 
 		expect(lines[0]).toBe('# Heading');
 		expect(lines[1]).toBe('- [ ] Root task');
@@ -626,7 +640,8 @@ describe('EditorProcessor', () => {
 	describe('unindent cleanup', () => {
 		it('removes stale ⛔ from former parent when child is unindented to root', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Scenario: child was previously under parent and has 🆔, parent has ⛔.
 			// Now the child is at root level (unindented).
 			const lines = [
@@ -634,9 +649,8 @@ describe('EditorProcessor', () => {
 				'- [ ] Former child 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// The child is no longer indented under the parent.
 			// Parent should have ⛔ abc123 removed.
@@ -648,7 +662,8 @@ describe('EditorProcessor', () => {
 
 		it('moves ⛔ from old parent to new parent when child is re-indented', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Child was under OldParent, now indented under NewParent instead
 			const lines = [
 				'- [ ] Old parent ⛔ abc123',
@@ -656,9 +671,8 @@ describe('EditorProcessor', () => {
 				'\t- [ ] Child 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// Old parent should no longer have ⛔ abc123
 			expect(lines[0]).not.toContain('⛔ abc123');
@@ -670,15 +684,15 @@ describe('EditorProcessor', () => {
 
 		it('removes orphaned 🆔 when no line in document has ⛔ referencing it', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// A root-level task has an 🆔 but nobody has ⛔ for it
 			const lines = [
 				'- [ ] Task with orphaned ID 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// 🆔 should be removed since no ⛔ references it
 			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
@@ -686,15 +700,15 @@ describe('EditorProcessor', () => {
 
 		it('keeps 🆔 when another line still has ⛔ referencing it', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			const lines = [
 				'- [ ] Parent ⛔ abc123',
 				'\t- [ ] Child 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// 🆔 should be preserved because the parent still depends on it
 			expect(lines[1]).toContain('🆔 abc123');
@@ -703,7 +717,8 @@ describe('EditorProcessor', () => {
 
 		it('removes stale ⛔ but keeps valid ⛔ on the same parent', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123', 'def456']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Parent has two deps. Child def456 is still indented under parent.
 			// abc123 used to be a child but is now a separate root-level task.
 			const lines = [
@@ -712,9 +727,8 @@ describe('EditorProcessor', () => {
 				'- [ ] Former child 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123', 'def456']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// Parent should no longer have ⛔ abc123 (child unindented)
 			expect(lines[0]).not.toContain('⛔ abc123');
@@ -726,16 +740,16 @@ describe('EditorProcessor', () => {
 
 		it('handles child moved from one parent to another in multi-level hierarchy', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['child1']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			const lines = [
 				'- [ ] Parent A ⛔ child1',
 				'- [ ] Parent B',
 				'\t- [ ] Child 🆔 child1',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['child1']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// Parent A should lose ⛔ child1
 			expect(lines[0]).not.toContain('⛔ child1');
@@ -747,15 +761,15 @@ describe('EditorProcessor', () => {
 
 		it('does not remove ⛔ that corresponds to a valid child', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			const lines = [
 				'- [ ] Parent ⛔ abc123',
 				'\t- [ ] Child 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// ⛔ is valid because the child is still indented under parent
 			expect(lines[0]).toContain('⛔ abc123');
@@ -764,15 +778,15 @@ describe('EditorProcessor', () => {
 
 		it('removes orphaned 🆔 from multiple tasks', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['aaa111', 'bbb222']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			const lines = [
 				'- [ ] Task A 🆔 aaa111',
 				'- [ ] Task B 🆔 bbb222',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['aaa111', 'bbb222']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// Neither has a parent with ⛔, so both 🆔 should be removed
 			expect(lines[0]).toBe('- [ ] Task A');
@@ -781,16 +795,16 @@ describe('EditorProcessor', () => {
 
 		it('does not call setLine during orphan cleanup when no 🆔 needs removal', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Parent has ⛔ for child, child has 🆔. All is correct, nothing to clean
 			const lines = [
 				'- [ ] Parent ⛔ abc123',
 				'\t- [ ] Child 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// setLine should have been called exactly 0 times in pass 2
 			// (pass 1 also doesn't change anything since markers are correct)
@@ -802,7 +816,8 @@ describe('EditorProcessor', () => {
 			// Uses 4-space indentation as shown in the README
 			const spaceParser = new TaskParser({ useTab: false, tabSize: 4 });
 			const handler = new IndentationHandler(spaceParser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc444', 'abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 
 			// "Before" state from README: Design API schema was under Build backend
 			// User outdented Design API schema to be a sibling of Build backend
@@ -813,9 +828,8 @@ describe('EditorProcessor', () => {
 				'    - [ ] Design API schema 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc444', 'abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// Write tests should have ⛔ for both children: abc444 and abc123
 			expect(lines[0]).toContain('⛔');
@@ -832,7 +846,8 @@ describe('EditorProcessor', () => {
 
 		it('does not remove 🆔 from task in list A when only ⛔ reference is in list B', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Task A in list 1 has 🆔 abc123, task B in list 2 has ⛔ abc123.
 			// Cross-list reference: the plugin should NOT touch either marker.
 			const lines = [
@@ -841,9 +856,8 @@ describe('EditorProcessor', () => {
 				'- [ ] Task B ⛔ abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// 🆔 on Task A must be preserved since it's in a different list from ⛔
 			expect(lines[0]).toContain('🆔 abc123');
@@ -853,7 +867,8 @@ describe('EditorProcessor', () => {
 
 		it('does not remove ⛔ from task in list A when referenced 🆔 is in list B', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Parent in list 1 has ⛔ abc123, child in list 2 has 🆔 abc123.
 			// Cross-list: plugin should not touch either marker.
 			const lines = [
@@ -862,9 +877,8 @@ describe('EditorProcessor', () => {
 				'\t- [ ] Child 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// ⛔ on Parent must be preserved (cross-list reference)
 			expect(lines[0]).toContain('⛔ abc123');
@@ -874,7 +888,8 @@ describe('EditorProcessor', () => {
 
 		it('two separate lists each get independent dependency management', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set<string>();
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			const lines = [
 				'- [ ] Parent A',
 				'\t- [ ] Child A',
@@ -883,9 +898,8 @@ describe('EditorProcessor', () => {
 				'\t- [ ] Child B',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set<string>();
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// List 1: Child A gets 🆔, Parent A gets ⛔
 			expect(lines[1]).toMatch(/🆔 [a-z0-9]{6}/);
@@ -905,16 +919,16 @@ describe('EditorProcessor', () => {
 
 		it('task indented under heading does not get linked to parent in different list', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set<string>();
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			const lines = [
 				'- [ ] Parent in list A',
 				'# Heading',
 				'\t- [ ] Child in list B',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set<string>();
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// Child should NOT get linked to Parent (different lists)
 			expect(lines[0]).not.toContain('⛔');
@@ -925,16 +939,16 @@ describe('EditorProcessor', () => {
 	describe('deleted child cleanup', () => {
 		it('removes ⛔ from parent when child task line was deleted', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set<string>();
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Scenario: child task was deleted, but parent still has ⛔ referencing
 			// the deleted child's ID. No 🆔 abc123 exists anywhere in the document.
 			const lines = [
 				'- [ ] Parent ⛔ abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set<string>();
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// ⛔ abc123 should be removed because no 🆔 abc123 exists in document
 			expect(lines[0]).toBe('- [ ] Parent');
@@ -942,16 +956,16 @@ describe('EditorProcessor', () => {
 
 		it('removes only the deleted child dep while keeping valid deps', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['def456']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Parent has two deps. Child def456 still exists, abc123 was deleted.
 			const lines = [
 				'- [ ] Parent ⛔ abc123,def456',
 				'\t- [ ] Remaining child 🆔 def456',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['def456']);
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// abc123 should be removed (no 🆔 exists), def456 should stay
 			expect(lines[0]).toContain('⛔ def456');
@@ -960,7 +974,8 @@ describe('EditorProcessor', () => {
 
 		it('removes ⛔ for deleted child even when not in managedIds', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set<string>();
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// The deleted child's 🆔 is gone from the block, so its ID won't be
 			// in blockIds (managedIds). The cleanup should still remove it.
 			const lines = [
@@ -968,9 +983,8 @@ describe('EditorProcessor', () => {
 				'\t- [ ] Child A',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set<string>();
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// ⛔ deleted1 references a non-existent 🆔 and must be removed
 			expect(lines[0]).not.toContain('deleted1');
@@ -978,17 +992,16 @@ describe('EditorProcessor', () => {
 
 		it('preserves ⛔ when referenced 🆔 exists in another vault file (cross-file)', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
 			// ⛔ abc123 has no local 🆔, but it exists in another vault file
+			const existingIds = new Set(['abc123']); // exists in vault
+			const otherVaultIds = new Set(['abc123']); // exists in another file
+			const processor = new EditorProcessor(handler, createIdCache(existingIds, otherVaultIds), createDepCache());
 			const lines = [
 				'- [ ] Parent ⛔ abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']); // exists in vault
-			const vaultDepIds = new Set<string>();
-			const otherVaultIds = new Set(['abc123']); // exists in another file
 
-			processor.processAllLines(editor, existingIds, vaultDepIds, otherVaultIds);
+			processor.processAllLines(editor, 'current.md');
 
 			// ⛔ preserved because 🆔 exists in another vault file
 			expect(lines[0]).toContain('⛔ abc123');
@@ -996,15 +1009,14 @@ describe('EditorProcessor', () => {
 
 		it('removes ⛔ when referenced 🆔 does not exist in vault either', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set<string>(); // ghost1 not in vault
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			const lines = [
 				'- [ ] Parent ⛔ ghost1',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set<string>(); // ghost1 not in vault
-			const vaultDepIds = new Set<string>();
 
-			processor.processAllLines(editor, existingIds, vaultDepIds);
+			processor.processAllLines(editor, '');
 
 			// ⛔ ghost1 references a completely non-existent 🆔, so remove it
 			expect(lines[0]).toBe('- [ ] Parent');
@@ -1012,7 +1024,8 @@ describe('EditorProcessor', () => {
 
 		it('preserves ⛔ when 🆔 exists in document but not in existingIds', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set<string>(); // not in vault cache
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// The ⛔ references an 🆔 that exists in the DOCUMENT (different block)
 			// but is not in existingIds. The documentIds scan should find it.
 			const lines = [
@@ -1021,9 +1034,8 @@ describe('EditorProcessor', () => {
 				'- [ ] Other task 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set<string>(); // not in vault cache
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// ⛔ preserved because 🆔 abc123 exists in the document
 			expect(lines[0]).toContain('⛔ abc123');
@@ -1031,16 +1043,16 @@ describe('EditorProcessor', () => {
 
 		it('removes dangling ⛔ from non-first line in a list block', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set<string>();
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			// Second line (bi=1) has a dangling ⛔ for a deleted child
 			const lines = [
 				'- [ ] Parent A',
 				'\t- [ ] Parent B ⛔ deleted1',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set<string>();
 
-			processor.processAllLines(editor, existingIds);
+			processor.processAllLines(editor, '');
 
 			// ⛔ deleted1 on second line should be removed (no 🆔 deleted1 exists)
 			expect(lines[1]).not.toContain('deleted1');
@@ -1050,17 +1062,17 @@ describe('EditorProcessor', () => {
 	describe('cross-file vault dep IDs', () => {
 		it('does not remove 🆔 when the ID is in vaultDepIds (cross-file reference)', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
 			// A root-level task has 🆔 abc123 but no ⛔ in this document.
 			// However, abc123 IS referenced by ⛔ in another file (vaultDepIds).
+			const existingIds = new Set(['abc123']);
+			const vaultDepIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache(vaultDepIds));
 			const lines = [
 				'- [ ] Task with cross-file dep 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
-			const vaultDepIds = new Set(['abc123']);
 
-			processor.processAllLines(editor, existingIds, vaultDepIds);
+			processor.processAllLines(editor, '');
 
 			// 🆔 should be preserved because it's referenced in another vault file
 			expect(lines[0]).toContain('🆔 abc123');
@@ -1068,47 +1080,47 @@ describe('EditorProcessor', () => {
 
 		it('removes 🆔 when the ID is NOT in vaultDepIds and no local ⛔ exists', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const vaultDepIds = new Set<string>(); // empty, no cross-file refs
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache(vaultDepIds));
 			const lines = [
 				'- [ ] Task with orphaned ID 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
-			const vaultDepIds = new Set<string>(); // empty, no cross-file refs
 
-			processor.processAllLines(editor, existingIds, vaultDepIds);
+			processor.processAllLines(editor, '');
 
 			// 🆔 should be removed since there is no local or vault-wide reference
 			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
 		});
 
-		it('works correctly when vaultDepIds is undefined (backward compatible)', () => {
+		it('works correctly when depCache returns empty set (no cross-file refs)', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
 			const lines = [
 				'- [ ] Task with orphaned ID 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
 
-			// No vaultDepIds passed, should behave as before (remove orphaned 🆔)
-			processor.processAllLines(editor, existingIds);
+			// depCache returns empty set, should behave as before (remove orphaned 🆔)
+			processor.processAllLines(editor, '');
 
 			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
 		});
 
 		it('preserves 🆔 when local ⛔ exists even if vaultDepIds is empty', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['abc123']);
+			const vaultDepIds = new Set<string>(); // empty
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache(vaultDepIds));
 			const lines = [
 				'- [ ] Parent ⛔ abc123',
 				'\t- [ ] Child 🆔 abc123',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['abc123']);
-			const vaultDepIds = new Set<string>(); // empty
 
-			processor.processAllLines(editor, existingIds, vaultDepIds);
+			processor.processAllLines(editor, '');
 
 			// 🆔 preserved because local ⛔ references it
 			expect(lines[1]).toContain('🆔 abc123');
@@ -1116,16 +1128,16 @@ describe('EditorProcessor', () => {
 
 		it('preserves multiple 🆔 markers when their IDs are in vaultDepIds', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['aaa111', 'bbb222']);
+			const vaultDepIds = new Set(['aaa111', 'bbb222']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache(vaultDepIds));
 			const lines = [
 				'- [ ] Task A 🆔 aaa111',
 				'- [ ] Task B 🆔 bbb222',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['aaa111', 'bbb222']);
-			const vaultDepIds = new Set(['aaa111', 'bbb222']);
 
-			processor.processAllLines(editor, existingIds, vaultDepIds);
+			processor.processAllLines(editor, '');
 
 			// Both 🆔 should be preserved because both are referenced in vault
 			expect(lines[0]).toContain('🆔 aaa111');
@@ -1134,17 +1146,17 @@ describe('EditorProcessor', () => {
 
 		it('removes only the 🆔 not in vaultDepIds when multiple tasks exist', () => {
 			const handler = new IndentationHandler(parser, idEngine);
-			const processor = new EditorProcessor(handler);
+			const existingIds = new Set(['aaa111', 'bbb222']);
+			// Only aaa111 is referenced in another file
+			const vaultDepIds = new Set(['aaa111']);
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache(vaultDepIds));
 			const lines = [
 				'- [ ] Task A 🆔 aaa111',
 				'- [ ] Task B 🆔 bbb222',
 			];
 			const editor = createMockEditor(lines);
-			const existingIds = new Set(['aaa111', 'bbb222']);
-			// Only aaa111 is referenced in another file
-			const vaultDepIds = new Set(['aaa111']);
 
-			processor.processAllLines(editor, existingIds, vaultDepIds);
+			processor.processAllLines(editor, '');
 
 			// aaa111 preserved (vault reference), bbb222 removed (orphaned)
 			expect(lines[0]).toContain('🆔 aaa111');
