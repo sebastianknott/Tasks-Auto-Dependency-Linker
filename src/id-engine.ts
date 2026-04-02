@@ -85,128 +85,106 @@ export interface FileEntry {
 }
 
 /**
- * Manages the vault-wide cache of existing `🆔` IDs.
+ * Abstract base for per-file marker caches.
  *
- * Tracks IDs per file so that when a file is modified, stale IDs from
- * its previous content are removed before new ones are added.
+ * Tracks a set of strings per file path. Subclasses define how to
+ * extract those strings from file content via {@link extract}.
  *
- * Delegates to {@link IdEngine.collectAllIds} for scanning.
+ * Shared logic for building, updating, and querying the cache lives
+ * here, eliminating duplication between IdCache and DepCache.
  */
-export class IdCache {
-	private readonly idEngine: IdEngine;
-	private readonly fileIds: Map<string, Set<string>> = new Map();
+export abstract class MarkerCache {
+	protected readonly idEngine: IdEngine;
+	private readonly fileEntries: Map<string, Set<string>> = new Map();
 
 	constructor(idEngine: IdEngine) {
 		this.idEngine = idEngine;
 	}
 
 	/**
+	 * Extracts the relevant marker strings from file content.
+	 *
+	 * @param content - Raw file content to scan.
+	 * @returns A set of extracted marker strings.
+	 */
+	protected abstract extract(content: string): Set<string>;
+
+	/**
 	 * Rebuilds the cache from scratch using an array of file entries.
-	 * Clears any previously cached IDs.
+	 * Clears any previously cached data.
 	 */
 	buildFromFiles(files: FileEntry[]): void {
-		this.fileIds.clear();
+		this.fileEntries.clear();
 		for (const file of files) {
-			this.fileIds.set(file.path, this.idEngine.collectAllIds(file.content));
+			this.fileEntries.set(file.path, this.extract(file.content));
 		}
 	}
 
 	/**
-	 * Replaces the cached IDs for a single file.
+	 * Replaces the cached entries for a single file.
 	 *
-	 * Removes all IDs previously associated with the file, then adds
-	 * any IDs found in the new content. IDs from other files are
+	 * Removes all entries previously associated with the file, then
+	 * adds any entries found in the new content. Other files are
 	 * unaffected.
 	 */
 	updateForFile(filePath: string, content: string): void {
-		this.fileIds.set(filePath, this.idEngine.collectAllIds(content));
+		this.fileEntries.set(filePath, this.extract(content));
 	}
 
-	/** Returns a set containing the union of all per-file IDs. */
-	getIds(): Set<string> {
-		const ids = new Set<string>();
-		for (const fileSet of this.fileIds.values()) {
-			for (const id of fileSet) {
-				ids.add(id);
+	/** Returns a set containing the union of all per-file entries. */
+	getAll(): Set<string> {
+		const all = new Set<string>();
+		for (const fileSet of this.fileEntries.values()) {
+			for (const entry of fileSet) {
+				all.add(entry);
 			}
 		}
-		return ids;
+		return all;
 	}
 
 	/**
-	 * Returns a set containing the union of all per-file IDs,
-	 * excluding IDs from the specified file path.
+	 * Returns a set containing the union of all per-file entries,
+	 * excluding entries from the specified file path.
 	 *
-	 * Useful during editing to get vault IDs that come from
-	 * other files (the current file's IDs may be stale).
+	 * Useful during editing to get vault entries that come from
+	 * other files (the current file's entries may be stale).
 	 */
-	getIdsExcluding(filePath: string): Set<string> {
-		const ids = new Set<string>();
-		for (const [path, fileSet] of this.fileIds) {
+	getAllExcluding(filePath: string): Set<string> {
+		const all = new Set<string>();
+		for (const [path, fileSet] of this.fileEntries) {
 			if (path === filePath) {
 				continue;
 			}
-			for (const id of fileSet) {
-				ids.add(id);
+			for (const entry of fileSet) {
+				all.add(entry);
 			}
 		}
-		return ids;
+		return all;
 	}
 }
 
 /**
- * Manages the vault-wide cache of dependency references (`⛔` IDs).
+ * Vault-wide cache of existing `🆔` IDs.
  *
- * Tracks deps per file so that when a file is modified, stale dep
- * references from its previous content are removed before new ones
- * are added.
- *
- * Delegates to {@link IdEngine.collectAllDepIds} for scanning.
+ * Extends {@link MarkerCache} with {@link IdEngine.collectAllIds} as
+ * the extraction strategy. Convenience methods preserve the original
+ * API so consumers are unaffected by the refactoring.
  */
-export class DepCache {
-	private readonly idEngine: IdEngine;
-	private readonly fileDeps: Map<string, Set<string>> = new Map();
-
-	constructor(idEngine: IdEngine) {
-		this.idEngine = idEngine;
+export class IdCache extends MarkerCache {
+	protected extract(content: string): Set<string> {
+		return this.idEngine.collectAllIds(content);
 	}
+}
 
-	/**
-	 * Rebuilds the cache from scratch using an array of file entries.
-	 * Clears any previously cached dep references.
-	 */
-	buildFromFiles(files: FileEntry[]): void {
-		this.fileDeps.clear();
-		for (const file of files) {
-			this.fileDeps.set(
-				file.path,
-				this.idEngine.collectAllDepIds(file.content),
-			);
-		}
-	}
-
-	/**
-	 * Replaces the cached dep references for a single file.
-	 *
-	 * Removes all deps previously associated with the file, then adds
-	 * any deps found in the new content. Deps from other files are
-	 * unaffected.
-	 */
-	updateForFile(filePath: string, content: string): void {
-		this.fileDeps.set(
-			filePath,
-			this.idEngine.collectAllDepIds(content),
-		);
-	}
-
-	/** Returns a set containing the union of all per-file deps. */
-	getDeps(): Set<string> {
-		const deps = new Set<string>();
-		for (const fileSet of this.fileDeps.values()) {
-			for (const dep of fileSet) {
-				deps.add(dep);
-			}
-		}
-		return deps;
+/**
+ * Vault-wide cache of dependency references (`⛔` IDs).
+ *
+ * Extends {@link MarkerCache} with {@link IdEngine.collectAllDepIds}
+ * as the extraction strategy. The convenience method preserves the
+ * original API so consumers are unaffected by the refactoring.
+ */
+export class DepCache extends MarkerCache {
+	protected extract(content: string): Set<string> {
+		return this.idEngine.collectAllDepIds(content);
 	}
 }

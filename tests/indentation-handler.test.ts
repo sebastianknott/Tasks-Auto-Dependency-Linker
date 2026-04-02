@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { IndentationHandler } from '../src/indentation-handler';
-import { EditorProcessor, type IdCacheLike, type DepCacheLike } from '../src/editor-processor';
+import { EditorProcessor, type MarkerCacheLike } from '../src/editor-processor';
 import { TaskParser, DEFAULT_INDENT_CONFIG } from '../src/task-parser';
 import { IdEngine } from '../src/id-engine';
 
@@ -529,16 +529,17 @@ describe('IndentationHandler', () => {
 	});
 });
 
-function createIdCache(ids: Set<string>, excludedIds?: Set<string>): IdCacheLike {
+function createIdCache(ids: Set<string>, excludedIds?: Set<string>): MarkerCacheLike {
 	return {
-		getIds: () => ids,
-		getIdsExcluding: () => excludedIds ?? new Set<string>(),
+		getAll: () => ids,
+		getAllExcluding: () => excludedIds ?? new Set<string>(),
 	};
 }
 
-function createDepCache(deps?: Set<string>): DepCacheLike {
+function createDepCache(deps?: Set<string>): MarkerCacheLike {
 	return {
-		getDeps: () => deps ?? new Set<string>(),
+		getAll: () => deps ?? new Set<string>(),
+		getAllExcluding: () => new Set<string>(),
 	};
 }
 

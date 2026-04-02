@@ -315,7 +315,7 @@ describe('TasksAutoDependencyLinker', () => {
 			expect(mockEditor.setLine).toHaveBeenCalled();
 		});
 
-		it('passes current file path to getIdsExcluding for cross-file awareness', async () => {
+		it('passes current file path to getAllExcluding for cross-file awareness', async () => {
 			const p = plugin as PluginInternals;
 
 			const mockEditor = {
@@ -331,7 +331,7 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			const excludeSpy = vi.spyOn(p.idCache, 'getIdsExcluding');
+			const excludeSpy = vi.spyOn(p.idCache, 'getAllExcluding');
 
 			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
 			vi.useFakeTimers();
@@ -359,7 +359,7 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			const excludeSpy = vi.spyOn(p.idCache, 'getIdsExcluding');
+			const excludeSpy = vi.spyOn(p.idCache, 'getAllExcluding');
 
 			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
 			vi.useFakeTimers();
