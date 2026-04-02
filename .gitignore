@@ -24,6 +24,7 @@ data.json
 
 # Stryker mutation testing
 reports/
+report.txt
 .stryker-incremental.json
 .stryker-tmp/
 
