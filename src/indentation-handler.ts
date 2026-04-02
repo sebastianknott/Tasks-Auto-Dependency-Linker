@@ -214,6 +214,32 @@ export class IndentationHandler {
 		return blocks;
 	}
 
+	/**
+	 * Removes `⛔` markers that reference IDs with no corresponding `🆔`
+	 * in the document. Returns the updated line.
+	 *
+	 * A `⛔` is considered dangling when the ID it references does not
+	 * appear as a `🆔` marker anywhere in the provided `knownIds` set.
+	 * This handles the case where a child task was deleted entirely.
+	 *
+	 * Uses the live document IDs (not the vault cache) as the source of
+	 * truth, because the vault cache may be stale for the current file
+	 * during an editing session.
+	 */
+	removeDanglingDeps(
+		line: string,
+		knownIds: Set<string>,
+	): string {
+		const currentDeps = this.parser.getTaskDependencies(line);
+		let result = line;
+		for (const dep of currentDeps) {
+			if (!knownIds.has(dep)) {
+				result = this.parser.removeDependencyFromLine(result, dep);
+			}
+		}
+		return result;
+	}
+
 	/** Returns the `🆔` from a line, or null. Delegates to {@link TaskParser}. */
 	getTaskId(line: string): string | null {
 		return this.parser.getTaskId(line);
@@ -228,9 +254,12 @@ export class IndentationHandler {
 /**
  * Orchestrates processing all lines in an editor.
  *
- * Uses a two-pass approach:
+ * Uses a multi-pass approach:
  * 1. **Link pass**: adds `🆔` / `⛔` markers based on current indentation.
- * 2. **Cleanup pass**: removes stale `⛔` from former parents and orphaned `🆔`.
+ * 2. **Cleanup pass** (per list block):
+ *    a. Removes stale `⛔` from former parents (relationship-based).
+ *    b. Removes dangling `⛔` that reference deleted `🆔` IDs.
+ *    c. Removes orphaned `🆔` with no `⛔` referencing them.
  *
  * Extracted from main.ts so the iteration logic is testable and mutation-covered.
  */
@@ -244,14 +273,22 @@ export class EditorProcessor {
 	/**
 	 * Processes every line in the editor for dependency linking.
 	 *
-	 * When `vaultDepIds` is provided, orphaned `🆔` markers whose ID
-	 * appears in that set are preserved (they are referenced by a `⛔`
-	 * in another vault file).
+	 * @param editor - The editor whose lines are processed.
+	 * @param existingIds - All `🆔` IDs known across the entire vault
+	 *   (used for collision-free ID generation in Pass 1).
+	 * @param vaultDepIds - All `⛔` dep references known across the
+	 *   vault. Orphaned `🆔` markers whose ID appears in this set
+	 *   are preserved (referenced by a `⛔` in another vault file).
+	 * @param otherVaultIds - All `🆔` IDs from vault files **other
+	 *   than the current document**. Used by the dangling-dep pass to
+	 *   preserve `⛔` markers that reference cross-file `🆔` IDs.
+	 *   When omitted, only the live document IDs are considered.
 	 */
 	processAllLines(
 		editor: EditorLike,
 		existingIds: Set<string>,
 		vaultDepIds?: Set<string>,
+		otherVaultIds?: Set<string>,
 	): void {
 		const lineCount = editor.lineCount();
 
@@ -268,6 +305,16 @@ export class EditorProcessor {
 
 		// Identify list blocks so cleanup is scoped per-list
 		const blocks = this.handler.identifyListBlocks(lines);
+
+		// Collect all 🆔 IDs present in the document and combine with
+		// IDs from other vault files for dangling-dep checks
+		const knownIds = new Set<string>(otherVaultIds);
+		for (let i = 0; i < lines.length; i++) {
+			const id = this.handler.getTaskId(lines[i]!);
+			if (id) {
+				knownIds.add(id);
+			}
+		}
 
 		// Collect all 🆔 IDs present in each block for cross-reference checks
 		const blockIdSets: Map<number, Set<string>> = new Map();
@@ -311,7 +358,22 @@ export class EditorProcessor {
 				}
 			}
 
-			// Pass 2b: Remove orphaned 🆔 (no ⛔ references it in document or vault)
+			// Pass 2b: Remove dangling ⛔ (references to deleted 🆔 IDs)
+			for (let bi = 0; bi < blockLines.length; bi++) {
+				const line = blockLines[bi]!;
+				const cleaned = this.handler.removeDanglingDeps(
+					line,
+					knownIds,
+				);
+				if (cleaned !== line) {
+					const docIndex = block.start + bi;
+					editor.setLine(docIndex, cleaned);
+					lines[docIndex] = cleaned;
+					blockLines[bi] = cleaned;
+				}
+			}
+
+			// Pass 2c: Remove orphaned 🆔 (no ⛔ references it in document or vault)
 			for (let bi = 0; bi < blockLines.length; bi++) {
 				const line = blockLines[bi]!;
 				const id = this.handler.getTaskId(line);

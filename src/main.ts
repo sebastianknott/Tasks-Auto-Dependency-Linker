@@ -70,18 +70,21 @@ export default class TasksAutoDependencyLinker extends Plugin {
 
 	private async buildIdCache(): Promise<void> {
 		const files = this.app.vault.getMarkdownFiles();
-		const contents: string[] = [];
+		const entries: Array<{ path: string; content: string }> = [];
 		for (const file of files) {
-			contents.push(await this.app.vault.cachedRead(file));
+			entries.push({
+				path: file.path,
+				content: await this.app.vault.cachedRead(file),
+			});
 		}
-		this.idCache.buildFromContents(contents);
-		this.depCache.buildFromContents(contents);
+		this.idCache.buildFromFiles(entries);
+		this.depCache.buildFromFiles(entries);
 	}
 
 	private async updateCacheForFile(file: TFile): Promise<void> {
 		const content = await this.app.vault.cachedRead(file);
-		this.idCache.updateFromContent(content);
-		this.depCache.updateFromContent(content);
+		this.idCache.updateForFile(file.path, content);
+		this.depCache.updateForFile(file.path, content);
 	}
 
 	private processActiveEditor(): void {
@@ -89,10 +92,12 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		if (!view) {
 			return;
 		}
+		const filePath = view.file?.path ?? '';
 		this.processor.processAllLines(
 			view.editor,
 			this.idCache.getIds(),
 			this.depCache.getDeps(),
+			this.idCache.getIdsExcluding(filePath),
 		);
 	}
 }

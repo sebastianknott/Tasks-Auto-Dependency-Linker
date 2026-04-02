@@ -214,22 +214,23 @@ describe('TasksAutoDependencyLinker', () => {
 			// After layout ready, an editor-change that assigns a NEW parent
 			// should generate an ID that is NOT 'aaa111' (because it's already cached).
 			// We verify by checking the cache was populated via integration.
-			// The simplest proof: spy on IdCache.buildFromContents
-			const buildSpy = vi.spyOn(p.idCache, 'buildFromContents');
+			const buildSpy = vi.spyOn(p.idCache, 'buildFromFiles');
 
-			// Trigger a second layout-ready to check it calls buildFromContents
+			// Trigger a second layout-ready to check it calls buildFromFiles
 			await p._layoutReadyCb();
-			expect(buildSpy).toHaveBeenCalledWith(['- [ ] Task \u{1F194} aaa111']);
+			expect(buildSpy).toHaveBeenCalledWith([
+				{ path: 'note1.md', content: '- [ ] Task \u{1F194} aaa111' },
+			]);
 			buildSpy.mockRestore();
 		});
 
-		it('handles empty vault gracefully (empty contents array)', async () => {
+		it('handles empty vault gracefully (empty files array)', async () => {
 			const p = plugin as PluginInternals;
 			p.app.vault.getMarkdownFiles = () => [];
 
 			await plugin.onload();
 
-			const buildSpy = vi.spyOn(p.idCache, 'buildFromContents');
+			const buildSpy = vi.spyOn(p.idCache, 'buildFromFiles');
 			await p._layoutReadyCb();
 
 			expect(buildSpy).toHaveBeenCalledWith([]);
@@ -312,6 +313,62 @@ describe('TasksAutoDependencyLinker', () => {
 			vi.useRealTimers();
 
 			expect(mockEditor.setLine).toHaveBeenCalled();
+		});
+
+		it('passes current file path to getIdsExcluding for cross-file awareness', async () => {
+			const p = plugin as PluginInternals;
+
+			const mockEditor = {
+				lineCount: () => 1,
+				getLine: () => '- [ ] Root task',
+				setLine: vi.fn(),
+			};
+
+			p.app.workspace.getActiveViewOfType = () => ({
+				editor: mockEditor,
+				file: { path: 'folder/current.md' },
+			});
+
+			await plugin.onload();
+
+			const excludeSpy = vi.spyOn(p.idCache, 'getIdsExcluding');
+
+			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
+			vi.useFakeTimers();
+			wsHandlers[0].cb();
+			vi.advanceTimersByTime(300);
+			vi.useRealTimers();
+
+			expect(excludeSpy).toHaveBeenCalledWith('folder/current.md');
+			excludeSpy.mockRestore();
+		});
+
+		it('uses empty string when view.file is null', async () => {
+			const p = plugin as PluginInternals;
+
+			const mockEditor = {
+				lineCount: () => 1,
+				getLine: () => '- [ ] Root task',
+				setLine: vi.fn(),
+			};
+
+			// view.file is undefined (no file property)
+			p.app.workspace.getActiveViewOfType = () => ({
+				editor: mockEditor,
+			});
+
+			await plugin.onload();
+
+			const excludeSpy = vi.spyOn(p.idCache, 'getIdsExcluding');
+
+			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
+			vi.useFakeTimers();
+			wsHandlers[0].cb();
+			vi.advanceTimersByTime(300);
+			vi.useRealTimers();
+
+			expect(excludeSpy).toHaveBeenCalledWith('');
+			excludeSpy.mockRestore();
 		});
 	});
 });

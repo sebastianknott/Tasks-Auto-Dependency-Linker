@@ -1,2 +1,1 @@
-(B) Check if all files in the repository serve a purpose. Especially version-bump-mjs and verisons.json. look it up on the net
 (C) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy
