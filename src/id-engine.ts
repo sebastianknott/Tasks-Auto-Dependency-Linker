@@ -13,7 +13,7 @@ const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 /**
  * Generates and manages unique 6-char alphanumeric IDs.
  *
- * Each instance is stateless — call {@link collectAllIds} to gather
+ * Each instance is stateless. Call {@link collectAllIds} to gather
  * existing IDs from vault content, then {@link generateUniqueId} to
  * produce an ID guaranteed not to collide.
  */

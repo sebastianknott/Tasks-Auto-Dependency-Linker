@@ -6,7 +6,7 @@ import { IndentationHandler, EditorProcessor } from './indentation-handler';
 import { Debounce } from './utils';
 
 /**
- * Tasks Auto-Dependency Linker — Obsidian Plugin.
+ * Tasks Auto-Dependency Linker plugin for Obsidian.
  *
  * Thin shell that wires Obsidian events to the extracted, testable classes.
  * All logic lives in TaskParser, IdEngine, IdCache, IndentationHandler,
