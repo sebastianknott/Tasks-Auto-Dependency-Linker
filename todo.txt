@@ -4,6 +4,5 @@
 (B) Move collectAllIds and collectAllDepIds from IdEngine to TaskParser (or a ContentScanner class), since they parse content not generate IDs +refactor @lchc
 (B) Eliminate existingIds mutation side effect in processLine by returning the newly generated ID instead of mutating the caller Set +refactor @lchc
 (B) Fix processLine O(N^2) performance: it rebuilds the entire lines array on every call; read lines once and pass them in +refactor @cleancode
-(B) Move DEFAULT_INDENT_CONFIG to static readonly on TaskParser and DEFAULT_DEBOUNCE_DELAY to static readonly on Debounce per project coding style +refactor @cleancode
 (B) Eliminate shared mutable lines array across passes in processAllLines; each pass should work on a fresh snapshot or use an immutable approach +refactor @cleancode
 (C) Reduce FTA score of indentation-handler.ts from 53 to below 50 (simplify or split further) +refactor @cleancode
