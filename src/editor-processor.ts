@@ -8,24 +8,14 @@
 import type { EditorLike, IndentationHandler } from './indentation-handler';
 
 /**
- * Read-only interface for querying vault-wide `🆔` IDs.
+ * Read-only interface for querying a vault-wide marker cache.
  *
- * Decouples {@link EditorProcessor} from the concrete IdCache
- * so tests can supply a simple stub.
+ * Decouples {@link EditorProcessor} from the concrete
+ * {@link MarkerCache} subclasses so tests can supply simple stubs.
  */
-export interface IdCacheLike {
-	getIds(): Set<string>;
-	getIdsExcluding(filePath: string): Set<string>;
-}
-
-/**
- * Read-only interface for querying vault-wide `⛔` dependency refs.
- *
- * Decouples {@link EditorProcessor} from the concrete DepCache
- * so tests can supply a simple stub.
- */
-export interface DepCacheLike {
-	getDeps(): Set<string>;
+export interface MarkerCacheLike {
+	getAll(): Set<string>;
+	getAllExcluding(filePath: string): Set<string>;
 }
 
 /**
@@ -43,8 +33,8 @@ export interface DepCacheLike {
  */
 export class EditorProcessor {
 	private readonly handler: IndentationHandler;
-	private readonly idCache: IdCacheLike;
-	private readonly depCache: DepCacheLike;
+	private readonly idCache: MarkerCacheLike;
+	private readonly depCache: MarkerCacheLike;
 
 	/** Active editor for the current processAllLines call. */
 	private editor!: EditorLike;
@@ -57,8 +47,8 @@ export class EditorProcessor {
 
 	constructor(
 		handler: IndentationHandler,
-		idCache: IdCacheLike,
-		depCache: DepCacheLike,
+		idCache: MarkerCacheLike,
+		depCache: MarkerCacheLike,
 	) {
 		this.handler = handler;
 		this.idCache = idCache;
@@ -83,7 +73,7 @@ export class EditorProcessor {
 	 * then snapshots all editor lines into {@link lines}.
 	 */
 	private runLinkPass(): void {
-		const existingIds = this.idCache.getIds();
+		const existingIds = this.idCache.getAll();
 		const lineCount = this.editor.lineCount();
 		for (let i = 0; i < lineCount; i++) {
 			this.handler.processLine(this.editor, i, existingIds);
@@ -99,7 +89,7 @@ export class EditorProcessor {
 	private runCleanupPass(filePath: string): void {
 		const blocks = this.handler.identifyListBlocks(this.lines);
 		const knownIds = this.collectKnownIds(filePath);
-		const vaultDepIds = this.depCache.getDeps();
+		const vaultDepIds = this.depCache.getAll();
 
 		for (let b = 0; b < blocks.length; b++) {
 			this.currentBlock = blocks[b]!;
@@ -119,7 +109,7 @@ export class EditorProcessor {
 	 * IDs in the current document plus IDs from other vault files.
 	 */
 	private collectKnownIds(filePath: string): Set<string> {
-		const knownIds = new Set<string>(this.idCache.getIdsExcluding(filePath));
+		const knownIds = new Set<string>(this.idCache.getAllExcluding(filePath));
 		for (const line of this.lines) {
 			const id = this.handler.getTaskId(line);
 			if (id) {
