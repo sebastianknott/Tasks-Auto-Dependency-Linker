@@ -14,9 +14,9 @@ export default {
 	],
 	reporters: ['html', 'clear-text', 'progress'],
 	thresholds: {
-		high: 80,
-		low: 60,
-		break: 50,
+		high: 100,
+		low: 99,
+		break: 98,
 	},
 	allowEmpty: true,
 	concurrency: 4,
