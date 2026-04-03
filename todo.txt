@@ -1,5 +1,3 @@
 (D) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy
-(B) Split IndentationHandler into RelationshipAnalyzer (structural analysis) and keep line-level cleanup in EditorProcessor or a MarkerCleaner +refactor @lchc
-(B) Give EditorProcessor direct access to TaskParser via constructor injection, remove middle-man delegation methods (getTaskId, removeIdFromLine) from IndentationHandler +refactor @lchc
-(B) Move collectAllIds and collectAllDepIds from IdEngine to TaskParser (or a ContentScanner class), since they parse content not generate IDs +refactor @lchc
-(B) Eliminate existingIds mutation side effect in processLine by returning the newly generated ID instead of mutating the caller Set +refactor @lchc
+
+(C) Eliminate existingIds mutation side effect in processLine by returning the newly generated ID instead of mutating the caller Set +refactor @lchc
