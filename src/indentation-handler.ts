@@ -24,11 +24,15 @@ export interface EditorLike {
  *
  * Instantiate with a {@link TaskParser} and {@link IdEngine}, then call
  * {@link processLine} on each line that may have changed indentation.
+ *
+ * Collaborators are exposed as `readonly` so that callers (e.g.
+ * {@link EditorProcessor}) can use them directly for read-only
+ * operations instead of routing through thin wrapper methods.
  */
 export class IndentationHandler {
-	private readonly parser: TaskParser;
+	readonly parser: TaskParser;
+	readonly relAnalyzer: RelationshipAnalyzer;
 	private readonly idEngine: IdEngine;
-	private readonly relAnalyzer: RelationshipAnalyzer;
 	/** Snapshot of editor lines set once before each link pass. */
 	private snapshot: string[] = new Array<string>();
 
@@ -54,16 +58,6 @@ export class IndentationHandler {
 	}
 
 	/**
-	 * Walks upward from `lineIndex` to find the nearest task line at a
-	 * strictly lower indent level. Returns the line index, or `null`.
-	 *
-	 * Delegates to {@link RelationshipAnalyzer}.
-	 */
-	findParentTask(lines: string[], lineIndex: number): number | null {
-		return this.relAnalyzer.findParentTask(lines, lineIndex);
-	}
-
-	/**
 	 * Processes a single line: if it is an indented task with a parent,
 	 * ensures the child has a `🆔` and the parent has a `⛔` for that ID.
 	 */
@@ -72,7 +66,7 @@ export class IndentationHandler {
 		lineIndex: number,
 		existingIds: Set<string>,
 	): void {
-		const parentIndex = this.findParentTask(this.snapshot, lineIndex);
+		const parentIndex = this.relAnalyzer.findParentTask(this.snapshot, lineIndex);
 		if (parentIndex === null) {
 			return;
 		}
@@ -95,31 +89,6 @@ export class IndentationHandler {
 		if (updatedParentLine !== parentLine) {
 			editor.setLine(parentIndex, updatedParentLine);
 		}
-	}
-
-	/**
-	 * Builds a map of desired parent-child relationships from current
-	 * indentation. Returns a Map where key = child line index,
-	 * value = parent line index.
-	 *
-	 * Delegates to {@link RelationshipAnalyzer}.
-	 */
-	buildRelationshipMap(lines: string[]): Map<number, number> {
-		return this.relAnalyzer.buildRelationshipMap(lines);
-	}
-
-	/**
-	 * Collects the set of child IDs that should be `⛔`-referenced by
-	 * a given parent, based on the relationship map.
-	 *
-	 * Delegates to {@link RelationshipAnalyzer}.
-	 */
-	getDesiredDepsForParent(
-		lines: string[],
-		parentIndex: number,
-		relationships: Map<number, number>,
-	): Set<string> {
-		return this.relAnalyzer.getDesiredDepsForParent(lines, parentIndex, relationships);
 	}
 
 	/**
@@ -161,17 +130,6 @@ export class IndentationHandler {
 	}
 
 	/**
-	 * Identifies contiguous list blocks in the document.
-	 *
-	 * Delegates to {@link RelationshipAnalyzer}.
-	 */
-	identifyListBlocks(
-		lines: string[],
-	): Array<{ start: number; end: number }> {
-		return this.relAnalyzer.identifyListBlocks(lines);
-	}
-
-	/**
 	 * Removes `⛔` markers that reference IDs with no corresponding `🆔`
 	 * in the document. Returns the updated line.
 	 *
@@ -194,15 +152,5 @@ export class IndentationHandler {
 			}
 		}
 		return result;
-	}
-
-	/** Returns the `🆔` from a line, or null. Delegates to {@link TaskParser}. */
-	getTaskId(line: string): string | null {
-		return this.parser.getTaskId(line);
-	}
-
-	/** Removes the `🆔` marker from a line. Delegates to {@link TaskParser}. */
-	removeIdFromLine(line: string): string {
-		return this.parser.removeIdFromLine(line);
 	}
 }

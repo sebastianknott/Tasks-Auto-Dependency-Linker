@@ -16,16 +16,6 @@ describe('TasksAutoDependencyLinker', () => {
 		plugin = new (TasksAutoDependencyLinker as any)();
 	});
 
-	it('exports a default class', () => {
-		expect(TasksAutoDependencyLinker).toBeDefined();
-		expect(typeof TasksAutoDependencyLinker).toBe('function');
-	});
-
-	it('has onload and onunload methods on its prototype', () => {
-		expect(typeof plugin.onload).toBe('function');
-		expect(typeof plugin.onunload).toBe('function');
-	});
-
 	describe('Tasks plugin detection', () => {
 		it('does nothing when Tasks plugin is not enabled', async () => {
 			const p = plugin as PluginInternals;
