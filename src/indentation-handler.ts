@@ -7,39 +7,31 @@
 
 import { TaskParser } from './task-parser';
 import { IdEngine } from './id-engine';
-import { RelationshipAnalyzer } from './relationship-analyzer';
-
-/**
- * Minimal subset of Obsidian's Editor API used by this handler.
- * Keeps the handler testable without a real Obsidian instance.
- */
-export interface EditorLike {
-	lineCount(): number;
-	getLine(n: number): string;
-	setLine(n: number, text: string): void;
-}
+import type { RelationshipAnalyzer } from './relationship-analyzer';
+import type { EditorLike } from './types';
 
 /**
  * Processes indentation changes and manages task dependency markers.
  *
- * Instantiate with a {@link TaskParser} and {@link IdEngine}, then call
- * {@link processLine} on each line that may have changed indentation.
- *
- * Collaborators are exposed as `readonly` so that callers (e.g.
- * {@link EditorProcessor}) can use them directly for read-only
- * operations instead of routing through thin wrapper methods.
+ * Instantiate with a {@link TaskParser}, {@link IdEngine}, and
+ * {@link RelationshipAnalyzer}, then call {@link processLine} on each
+ * line that may have changed indentation.
  */
 export class IndentationHandler {
-	readonly parser: TaskParser;
-	readonly relAnalyzer: RelationshipAnalyzer;
+	private readonly parser: TaskParser;
+	private readonly relAnalyzer: RelationshipAnalyzer;
 	private readonly idEngine: IdEngine;
 	/** Snapshot of editor lines set once before each link pass. */
 	private snapshot: string[] = new Array<string>();
 
-	constructor(parser: TaskParser, idEngine: IdEngine) {
+	constructor(
+		parser: TaskParser,
+		idEngine: IdEngine,
+		relAnalyzer: RelationshipAnalyzer,
+	) {
 		this.parser = parser;
 		this.idEngine = idEngine;
-		this.relAnalyzer = new RelationshipAnalyzer(parser);
+		this.relAnalyzer = relAnalyzer;
 	}
 
 	/**

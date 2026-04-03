@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { IndentationHandler } from '../src/indentation-handler';
-import { EditorProcessor, type MarkerCacheLike } from '../src/editor-processor';
+import { EditorProcessor } from '../src/editor-processor';
+import { RelationshipAnalyzer } from '../src/relationship-analyzer';
+import type { MarkerCacheLike } from '../src/types';
 import { TaskParser } from '../src/task-parser';
 import { IdEngine } from '../src/id-engine';
 
@@ -23,6 +25,7 @@ function createMockEditor(lines: string[]) {
 describe('IndentationHandler', () => {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
 	const idEngine = new IdEngine();
+	const relAnalyzer = new RelationshipAnalyzer(parser);
 
 	describe('removeStaleDeps', () => {
 		it.each<[string, string, Set<string>, string]>([
@@ -51,7 +54,7 @@ describe('IndentationHandler', () => {
 				'- [ ] Parent',
 			],
 		])('%s', (_description, line, desiredSet, expected) => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			expect(handler.removeStaleDeps(line, desiredSet)).toBe(expected);
 		});
 	});
@@ -83,14 +86,14 @@ describe('IndentationHandler', () => {
 				true,
 			],
 		])('%s', (_description, lines, id, expected) => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			expect(handler.isIdReferencedAsDep(lines, id)).toBe(expected);
 		});
 	});
 
 	describe('prepareForLinkPass', () => {
 		it('stores the editor lines as a snapshot for processLine', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = ['- [ ] Parent', '\t- [ ] Child'];
 			const editor = createMockEditor(lines);
 			handler.prepareForLinkPass(editor);
@@ -102,7 +105,7 @@ describe('IndentationHandler', () => {
 
 	describe('processLine', () => {
 		it('adds ID to child and dependency to parent on indent', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child',
@@ -120,7 +123,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('reuses existing child ID instead of generating a new one', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child \u{1F194} abc123',
@@ -136,7 +139,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not modify a non-task line', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = [
 				'- [ ] Parent',
 				'\tSome text',
@@ -151,7 +154,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not modify a root-level task', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = ['- [ ] Root task'];
 			const editor = createMockEditor(lines);
 
@@ -162,7 +165,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not duplicate an existing dependency', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = [
 				'- [ ] Parent \u26D4 abc123',
 				'\t- [ ] Child \u{1F194} abc123',
@@ -176,7 +179,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('adds the new ID to existingIds set', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child',
@@ -193,7 +196,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not call setLine for a line beyond lineCount', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child',
@@ -207,7 +210,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not modify lines when processing an empty editor', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines: string[] = [];
 			const editor = createMockEditor(lines);
 
@@ -218,7 +221,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('handles parent with existing dep on different child gracefully', () => {
-			const handler = new IndentationHandler(parser, idEngine);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 			const lines = [
 				'- [ ] Parent ⛔ oldid1',
 				'\t- [ ] New Child',
@@ -260,9 +263,12 @@ function createTestProcessor(
 ) {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
 	const idEngine = new IdEngine();
-	const handler = new IndentationHandler(parser, idEngine);
+	const relAnalyzer = new RelationshipAnalyzer(parser);
+	const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
 	const processor = new EditorProcessor(
 		handler,
+		parser,
+		relAnalyzer,
 		createIdCache(existingIds ?? new Set<string>(), options?.excludedIds),
 		createDepCache(options?.vaultDepIds),
 	);
@@ -452,9 +458,12 @@ describe('EditorProcessor', () => {
 		it('README example: multi-level re-parent with spaces indentation', () => {
 			const spaceParser = new TaskParser({ useTab: false, tabSize: 4 });
 			const idEngine = new IdEngine();
-			const handler = new IndentationHandler(spaceParser, idEngine);
+			const spaceRelAnalyzer = new RelationshipAnalyzer(spaceParser);
+			const handler = new IndentationHandler(spaceParser, idEngine, spaceRelAnalyzer);
 			const existingIds = new Set(['abc444', 'abc123']);
-			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
+			const processor = new EditorProcessor(
+				handler, spaceParser, spaceRelAnalyzer, createIdCache(existingIds), createDepCache(),
+			);
 
 			const lines = [
 				'- [ ] Write tests ⛔ abc444',

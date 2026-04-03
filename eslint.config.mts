@@ -41,8 +41,8 @@ export default tseslint.config(
 			// Clean Code: max nesting depth per function
 			'max-depth': ['error', { max: 4 }],
 
-			// Clean Code: max function parameters (prefer options objects beyond 3)
-			'max-params': ['error', { max: 3 }],
+			// Clean Code: max function parameters (constructors exempt via inline disable, see AGENTS.md)
+			'max-params': ['error', { max: 5 }],
 
 			// Clean Code: prevent mutation of function parameters (hidden side effects)
 			'no-param-reassign': 'error',

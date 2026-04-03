@@ -5,18 +5,10 @@
  * within the FTA complexity budget.
  */
 
-import type { EditorLike, IndentationHandler } from './indentation-handler';
-
-/**
- * Read-only interface for querying a vault-wide marker cache.
- *
- * Decouples {@link EditorProcessor} from the concrete
- * {@link MarkerCache} subclasses so tests can supply simple stubs.
- */
-export interface MarkerCacheLike {
-	getAll(): Set<string>;
-	getAllExcluding(filePath: string): Set<string>;
-}
+import type { IndentationHandler } from './indentation-handler';
+import type { TaskParser } from './task-parser';
+import type { RelationshipAnalyzer } from './relationship-analyzer';
+import type { EditorLike, MarkerCacheLike } from './types';
 
 /**
  * Orchestrates processing all lines in an editor.
@@ -28,11 +20,14 @@ export interface MarkerCacheLike {
  *    b. Removes dangling `⛔` that reference deleted `🆔` IDs.
  *    c. Removes orphaned `🆔` with no `⛔` referencing them.
  *
- * Vault caches are injected at construction time. Per-call state
- * (editor, lines) is stored as instance fields during processing.
+ * All collaborators are injected at construction time. Per-call state
+ * (editor, lines, currentBlock) is stored as instance fields during
+ * processing and reset at the start of each {@link processAllLines} call.
  */
 export class EditorProcessor {
 	private readonly handler: IndentationHandler;
+	private readonly parser: TaskParser;
+	private readonly relAnalyzer: RelationshipAnalyzer;
 	private readonly idCache: MarkerCacheLike;
 	private readonly depCache: MarkerCacheLike;
 
@@ -45,10 +40,14 @@ export class EditorProcessor {
 
 	constructor(
 		handler: IndentationHandler,
+		parser: TaskParser,
+		relAnalyzer: RelationshipAnalyzer,
 		idCache: MarkerCacheLike,
 		depCache: MarkerCacheLike,
 	) {
 		this.handler = handler;
+		this.parser = parser;
+		this.relAnalyzer = relAnalyzer;
 		this.idCache = idCache;
 		this.depCache = depCache;
 	}
@@ -90,7 +89,7 @@ export class EditorProcessor {
 
 	/** Pass 2: Runs all cleanup sub-passes on each list block. */
 	private runCleanupPass(filePath: string): void {
-		const blocks = this.handler.relAnalyzer.identifyListBlocks(this.lines);
+		const blocks = this.relAnalyzer.identifyListBlocks(this.lines);
 		const knownIds = this.collectKnownIds(filePath);
 		const vaultDepIds = this.depCache.getAll();
 
@@ -110,9 +109,8 @@ export class EditorProcessor {
 	 */
 	private collectKnownIds(filePath: string): Set<string> {
 		const knownIds = new Set<string>(this.idCache.getAllExcluding(filePath));
-		const parser = this.handler.parser;
 		for (const line of this.lines) {
-			const id = parser.getTaskId(line);
+			const id = this.parser.getTaskId(line);
 			if (id) {
 				knownIds.add(id);
 			}
@@ -124,10 +122,9 @@ export class EditorProcessor {
 	private collectIdsInRange(
 		block: { start: number; end: number },
 	): Set<string> {
-		const parser = this.handler.parser;
 		const ids = new Set<string>();
 		for (let i = block.start; i < block.end; i++) {
-			const id = parser.getTaskId(this.lines[i]!);
+			const id = this.parser.getTaskId(this.lines[i]!);
 			if (id) {
 				ids.add(id);
 			}
@@ -138,11 +135,10 @@ export class EditorProcessor {
 	/** Pass 2a: Removes stale `⛔` from former parents within a block. */
 	private cleanStaleDeps(blockIds: Set<string>): void {
 		const blockLines = this.lines.slice(this.currentBlock.start, this.currentBlock.end);
-		const analyzer = this.handler.relAnalyzer;
-		const relationships = analyzer.buildRelationshipMap(blockLines);
+		const relationships = this.relAnalyzer.buildRelationshipMap(blockLines);
 		for (let bi = 0; bi < blockLines.length; bi++) {
 			const line = blockLines[bi]!;
-			const desiredDeps = analyzer.getDesiredDepsForParent(
+			const desiredDeps = this.relAnalyzer.getDesiredDepsForParent(
 				blockLines, bi, relationships,
 			);
 			const cleaned = this.handler.removeStaleDeps(line, desiredDeps, blockIds);
@@ -166,17 +162,16 @@ export class EditorProcessor {
 
 	/** Pass 2c: Removes orphaned `🆔` with no `⛔` referencing them. */
 	private cleanOrphanedIds(vaultDepIds: Set<string>): void {
-		const parser = this.handler.parser;
 		const start = this.currentBlock.start;
 		for (let i = start; i < this.currentBlock.end; i++) {
 			const line = this.lines[i]!;
-			const id = parser.getTaskId(line);
+			const id = this.parser.getTaskId(line);
 			if (
 				id &&
 				!this.handler.isIdReferencedAsDep(this.lines, id) &&
 				!vaultDepIds.has(id)
 			) {
-				const cleaned = parser.removeIdFromLine(line);
+				const cleaned = this.parser.removeIdFromLine(line);
 				this.applyCleanedLine(i - start, cleaned);
 			}
 		}
