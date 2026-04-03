@@ -151,21 +151,21 @@ export class EditorProcessor {
 
 	/** Pass 2b: Removes dangling `⛔` that reference deleted `🆔` IDs. */
 	private cleanDanglingDeps(knownIds: Set<string>): void {
-		const blockLines = this.lines.slice(this.currentBlock.start, this.currentBlock.end);
-		for (let bi = 0; bi < blockLines.length; bi++) {
-			const line = blockLines[bi]!;
+		const start = this.currentBlock.start;
+		for (let i = start; i < this.currentBlock.end; i++) {
+			const line = this.lines[i]!;
 			const cleaned = this.handler.removeDanglingDeps(line, knownIds);
 			if (cleaned !== line) {
-				this.applyCleanedLine(bi, cleaned);
+				this.applyCleanedLine(i - start, cleaned);
 			}
 		}
 	}
 
 	/** Pass 2c: Removes orphaned `🆔` with no `⛔` referencing them. */
 	private cleanOrphanedIds(vaultDepIds: Set<string>): void {
-		const blockLines = this.lines.slice(this.currentBlock.start, this.currentBlock.end);
-		for (let bi = 0; bi < blockLines.length; bi++) {
-			const line = blockLines[bi]!;
+		const start = this.currentBlock.start;
+		for (let i = start; i < this.currentBlock.end; i++) {
+			const line = this.lines[i]!;
 			const id = this.handler.getTaskId(line);
 			if (
 				id &&
@@ -173,7 +173,7 @@ export class EditorProcessor {
 				!vaultDepIds.has(id)
 			) {
 				const cleaned = this.handler.removeIdFromLine(line);
-				this.applyCleanedLine(bi, cleaned);
+				this.applyCleanedLine(i - start, cleaned);
 			}
 		}
 	}

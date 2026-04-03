@@ -171,17 +171,20 @@ describe('IndentationHandler', () => {
 			expect(map.size).toBe(2);
 		});
 
-		it('does not access beyond the lines array bounds', () => {
+		it('maps each line in a 3-level hierarchy correctly', () => {
 			const handler = new IndentationHandler(parser, idEngine);
 			const lines = [
-				'- [ ] Parent',
-				'\t- [ ] Child',
+				'- [ ] Grandparent',
+				'\t- [ ] Parent',
+				'\t\t- [ ] Child',
 			];
-			const spy = vi.spyOn(handler, 'findParentTask');
-			handler.buildRelationshipMap(lines);
-			// Should be called exactly lines.length times (0 and 1), not 3
-			expect(spy).toHaveBeenCalledTimes(2);
-			spy.mockRestore();
+			const map = handler.buildRelationshipMap(lines);
+			// Grandparent has no parent
+			expect(map.has(0)).toBe(false);
+			// Parent maps to Grandparent
+			expect(map.get(1)).toBe(0);
+			// Child maps to Parent
+			expect(map.get(2)).toBe(1);
 		});
 	});
 
@@ -1080,6 +1083,25 @@ describe('EditorProcessor', () => {
 			// ⛔ deleted1 on second line should be removed (no 🆔 deleted1 exists)
 			expect(lines[1]).not.toContain('deleted1');
 		});
+
+		it('removes dangling ⛔ from a task in the second list block', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const existingIds = new Set<string>();
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache());
+			const lines = [
+				'- [ ] Task A',
+				'',
+				'- [ ] Task B \u26D4 ghost1',
+			];
+			const editor = createMockEditor(lines);
+
+			processor.processAllLines(editor, '');
+
+			// ghost1 exists in no 🆔 → remove ⛔ from block-2 line
+			expect(lines[2]).toBe('- [ ] Task B');
+			// Block 1 unchanged
+			expect(lines[0]).toBe('- [ ] Task A');
+		});
 	});
 
 	describe('cross-file vault dep IDs', () => {
@@ -1184,6 +1206,26 @@ describe('EditorProcessor', () => {
 			// aaa111 preserved (vault reference), bbb222 removed (orphaned)
 			expect(lines[0]).toContain('🆔 aaa111');
 			expect(lines[1]).toBe('- [ ] Task B');
+		});
+
+		it('removes orphaned 🆔 from a task in the second list block', () => {
+			const handler = new IndentationHandler(parser, idEngine);
+			const existingIds = new Set(['xyz999']);
+			const vaultDepIds = new Set<string>();
+			const processor = new EditorProcessor(handler, createIdCache(existingIds), createDepCache(vaultDepIds));
+			const lines = [
+				'- [ ] Task A',
+				'',
+				'- [ ] Task B \u{1F194} xyz999',
+			];
+			const editor = createMockEditor(lines);
+
+			processor.processAllLines(editor, '');
+
+			// xyz999 not referenced by any ⛔ in the document → remove from block-2 task
+			expect(lines[2]).toBe('- [ ] Task B');
+			// Block 1 unchanged
+			expect(lines[0]).toBe('- [ ] Task A');
 		});
 	});
 });

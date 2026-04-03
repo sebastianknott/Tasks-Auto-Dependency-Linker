@@ -7,6 +7,7 @@
 
 import { TaskParser } from './task-parser';
 import { IdEngine } from './id-engine';
+import { RelationshipAnalyzer } from './relationship-analyzer';
 
 /**
  * Minimal subset of Obsidian's Editor API used by this handler.
@@ -27,12 +28,14 @@ export interface EditorLike {
 export class IndentationHandler {
 	private readonly parser: TaskParser;
 	private readonly idEngine: IdEngine;
+	private readonly relAnalyzer: RelationshipAnalyzer;
 	/** Snapshot of editor lines set once before each link pass. */
-	private snapshot: string[] = [];
+	private snapshot: string[] = new Array<string>();
 
 	constructor(parser: TaskParser, idEngine: IdEngine) {
 		this.parser = parser;
 		this.idEngine = idEngine;
+		this.relAnalyzer = new RelationshipAnalyzer(parser);
 	}
 
 	/**
@@ -54,31 +57,10 @@ export class IndentationHandler {
 	 * Walks upward from `lineIndex` to find the nearest task line at a
 	 * strictly lower indent level. Returns the line index, or `null`.
 	 *
-	 * Non-task lines are skipped. If the current line itself is not a
-	 * task, returns `null`.
+	 * Delegates to {@link RelationshipAnalyzer}.
 	 */
 	findParentTask(lines: string[], lineIndex: number): number | null {
-		const currentLine = lines[lineIndex];
-		if (currentLine === undefined || !this.parser.isTaskLine(currentLine)) {
-			return null;
-		}
-
-		const currentIndent = this.parser.getIndentLevel(currentLine);
-
-		for (let i = lineIndex - 1; i >= 0; i--) {
-			const line = lines[i]!;
-			if (!this.parser.isListItem(line)) {
-				return null;
-			}
-			if (!this.parser.isTaskLine(line)) {
-				continue;
-			}
-			if (this.parser.getIndentLevel(line) < currentIndent) {
-				return i;
-			}
-		}
-
-		return null;
+		return this.relAnalyzer.findParentTask(lines, lineIndex);
 	}
 
 	/**
@@ -119,38 +101,25 @@ export class IndentationHandler {
 	 * Builds a map of desired parent-child relationships from current
 	 * indentation. Returns a Map where key = child line index,
 	 * value = parent line index.
+	 *
+	 * Delegates to {@link RelationshipAnalyzer}.
 	 */
 	buildRelationshipMap(lines: string[]): Map<number, number> {
-		const relationships = new Map<number, number>();
-		for (let i = 0; i < lines.length; i++) {
-			const parentIndex = this.findParentTask(lines, i);
-			if (parentIndex !== null) {
-				relationships.set(i, parentIndex);
-			}
-		}
-		return relationships;
+		return this.relAnalyzer.buildRelationshipMap(lines);
 	}
 
 	/**
 	 * Collects the set of child IDs that should be `⛔`-referenced by
 	 * a given parent, based on the relationship map.
+	 *
+	 * Delegates to {@link RelationshipAnalyzer}.
 	 */
 	getDesiredDepsForParent(
 		lines: string[],
 		parentIndex: number,
 		relationships: Map<number, number>,
 	): Set<string> {
-		const deps = new Set<string>();
-		for (const [childIdx, pIdx] of relationships) {
-			if (pIdx !== parentIndex) {
-				continue;
-			}
-			const childId = this.parser.getTaskId(lines[childIdx]!);
-			if (childId) {
-				deps.add(childId);
-			}
-		}
-		return deps;
+		return this.relAnalyzer.getDesiredDepsForParent(lines, parentIndex, relationships);
 	}
 
 	/**
@@ -166,9 +135,8 @@ export class IndentationHandler {
 		desiredDeps: Set<string>,
 		managedIds?: Set<string>,
 	): string {
-		const currentDeps = this.parser.getTaskDependencies(line);
 		let result = line;
-		for (const dep of currentDeps) {
+		for (const dep of this.parser.getTaskDependencies(line)) {
 			if (managedIds && !managedIds.has(dep)) {
 				continue;
 			}
@@ -195,34 +163,12 @@ export class IndentationHandler {
 	/**
 	 * Identifies contiguous list blocks in the document.
 	 *
-	 * A list block is a maximal contiguous sequence of list-item lines.
-	 * Non-list-item lines (blank lines, headings, paragraphs, etc.)
-	 * act as boundaries between blocks.
-	 *
-	 * Returns an array of `{start, end}` ranges where `start` is
-	 * inclusive and `end` is exclusive (like `Array.slice`).
+	 * Delegates to {@link RelationshipAnalyzer}.
 	 */
 	identifyListBlocks(
 		lines: string[],
 	): Array<{ start: number; end: number }> {
-		const blocks: Array<{ start: number; end: number }> = [];
-		let blockStart: number | null = null;
-
-		for (let i = 0; i < lines.length; i++) {
-			const isItem = this.parser.isListItem(lines[i]!);
-			if (isItem && blockStart === null) {
-				blockStart = i;
-			} else if (!isItem && blockStart !== null) {
-				blocks.push({ start: blockStart, end: i });
-				blockStart = null;
-			}
-		}
-
-		if (blockStart !== null) {
-			blocks.push({ start: blockStart, end: lines.length });
-		}
-
-		return blocks;
+		return this.relAnalyzer.identifyListBlocks(lines);
 	}
 
 	/**
@@ -241,9 +187,8 @@ export class IndentationHandler {
 		line: string,
 		knownIds: Set<string>,
 	): string {
-		const currentDeps = this.parser.getTaskDependencies(line);
 		let result = line;
-		for (const dep of currentDeps) {
+		for (const dep of this.parser.getTaskDependencies(line)) {
 			if (!knownIds.has(dep)) {
 				result = this.parser.removeDependencyFromLine(result, dep);
 			}
