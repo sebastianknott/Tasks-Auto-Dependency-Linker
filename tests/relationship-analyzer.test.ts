@@ -4,6 +4,7 @@ import { TaskParser } from '../src/task-parser';
 
 describe('RelationshipAnalyzer', () => {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
+	const analyzer = new RelationshipAnalyzer(parser);
 
 	describe('findParentTask', () => {
 		it.each<[string, string[], number, number | null]>([
@@ -104,7 +105,6 @@ describe('RelationshipAnalyzer', () => {
 				null,
 			],
 		])('%s', (_description, lines, lineIndex, expected) => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			expect(analyzer.findParentTask(lines, lineIndex)).toBe(expected);
 		});
 	});
@@ -127,12 +127,10 @@ describe('RelationshipAnalyzer', () => {
 				new Map(),
 			],
 		])('%s', (_description, lines, expectedMap) => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			expect(analyzer.buildRelationshipMap(lines)).toEqual(expectedMap);
 		});
 
 		it('maps child to parent based on indentation', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			const lines = ['- [ ] Parent', '\t- [ ] Child'];
 			const map = analyzer.buildRelationshipMap(lines);
 			expect(map.get(1)).toBe(0);
@@ -140,20 +138,19 @@ describe('RelationshipAnalyzer', () => {
 		});
 
 		it('maps multi-level hierarchy', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			const lines = [
 				'- [ ] Grandparent',
 				'\t- [ ] Parent',
 				'\t\t- [ ] Child',
 			];
 			const map = analyzer.buildRelationshipMap(lines);
+			expect(map.has(0)).toBe(false);
 			expect(map.get(1)).toBe(0);
 			expect(map.get(2)).toBe(1);
 			expect(map.size).toBe(2);
 		});
 
 		it('calls findParentTask exactly once per line', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			const lines = ['- [ ] Parent', '\t- [ ] Child'];
 			const spy = vi.spyOn(analyzer, 'findParentTask');
 			analyzer.buildRelationshipMap(lines);
@@ -205,12 +202,10 @@ describe('RelationshipAnalyzer', () => {
 				[{ start: 0, end: 2 }, { start: 4, end: 6 }],
 			],
 		])('%s', (_description, lines, expectedBlocks) => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			expect(analyzer.identifyListBlocks(lines)).toEqual(expectedBlocks);
 		});
 
 		it('does not access beyond the lines array bounds', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			const lines = ['- [ ] Task A', '- [ ] Task B'];
 			const spy = vi.spyOn(parser, 'isListItem');
 			analyzer.identifyListBlocks(lines);
@@ -220,53 +215,46 @@ describe('RelationshipAnalyzer', () => {
 	});
 
 	describe('getDesiredDepsForParent', () => {
-		it('returns empty set when parent has no children', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
-			const lines = ['- [ ] Lonely parent'];
-			const relationships = new Map<number, number>();
-			const deps = analyzer.getDesiredDepsForParent(lines, 0, relationships);
-			expect(deps.size).toBe(0);
+		it.each<[string, string[], number, Map<number, number>, number]>([
+			[
+				'returns empty set when parent has no children',
+				['- [ ] Lonely parent'],
+				0,
+				new Map<number, number>(),
+				0,
+			],
+			[
+				'skips children without an ID',
+				['- [ ] Parent', '\t- [ ] Child no ID'],
+				0,
+				new Map([[1, 0]]),
+				0,
+			],
+		])('%s', (_description, lines, parentIndex, relationships, expectedSize) => {
+			const deps = analyzer.getDesiredDepsForParent(lines, parentIndex, relationships);
+			expect(deps.size).toBe(expectedSize);
 		});
 
 		it('returns child IDs for a parent', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child \u{1F194} abc123',
 			];
-			const relationships = new Map([[1, 0]]);
-			const deps = analyzer.getDesiredDepsForParent(lines, 0, relationships);
-			expect(deps.has('abc123')).toBe(true);
-			expect(deps.size).toBe(1);
-		});
-
-		it('skips children without an ID', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
-			const lines = [
-				'- [ ] Parent',
-				'\t- [ ] Child no ID',
-			];
-			const relationships = new Map([[1, 0]]);
-			const deps = analyzer.getDesiredDepsForParent(lines, 0, relationships);
-			expect(deps.size).toBe(0);
+			const deps = analyzer.getDesiredDepsForParent(lines, 0, new Map([[1, 0]]));
+			expect(deps).toEqual(new Set(['abc123']));
 		});
 
 		it('returns multiple child IDs', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child A \u{1F194} aaa111',
 				'\t- [ ] Child B \u{1F194} bbb222',
 			];
-			const relationships = new Map([[1, 0], [2, 0]]);
-			const deps = analyzer.getDesiredDepsForParent(lines, 0, relationships);
-			expect(deps.has('aaa111')).toBe(true);
-			expect(deps.has('bbb222')).toBe(true);
-			expect(deps.size).toBe(2);
+			const deps = analyzer.getDesiredDepsForParent(lines, 0, new Map([[1, 0], [2, 0]]));
+			expect(deps).toEqual(new Set(['aaa111', 'bbb222']));
 		});
 
 		it('only returns children for the specified parent', () => {
-			const analyzer = new RelationshipAnalyzer(parser);
 			const lines = [
 				'- [ ] Parent A',
 				'\t- [ ] Child of A \u{1F194} aaa111',
@@ -274,12 +262,8 @@ describe('RelationshipAnalyzer', () => {
 				'\t- [ ] Child of B \u{1F194} bbb222',
 			];
 			const relationships = new Map([[1, 0], [3, 2]]);
-			const depsA = analyzer.getDesiredDepsForParent(lines, 0, relationships);
-			expect(depsA.has('aaa111')).toBe(true);
-			expect(depsA.size).toBe(1);
-			const depsB = analyzer.getDesiredDepsForParent(lines, 2, relationships);
-			expect(depsB.has('bbb222')).toBe(true);
-			expect(depsB.size).toBe(1);
+			expect(analyzer.getDesiredDepsForParent(lines, 0, relationships)).toEqual(new Set(['aaa111']));
+			expect(analyzer.getDesiredDepsForParent(lines, 2, relationships)).toEqual(new Set(['bbb222']));
 		});
 	});
 });

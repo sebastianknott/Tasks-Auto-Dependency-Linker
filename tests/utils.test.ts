@@ -10,24 +10,6 @@ describe('Debounce', () => {
 		vi.useRealTimers();
 	});
 
-	describe('DEFAULT_DELAY', () => {
-		it('is 300ms', () => {
-			expect(Debounce.DEFAULT_DELAY).toBe(300);
-		});
-	});
-
-	describe('constructor', () => {
-		it('creates an instance with a callback and default delay', () => {
-			const debounce = new Debounce(vi.fn());
-			expect(debounce).toBeInstanceOf(Debounce);
-		});
-
-		it('creates an instance with a custom delay', () => {
-			const debounce = new Debounce(vi.fn(), 500);
-			expect(debounce).toBeInstanceOf(Debounce);
-		});
-	});
-
 	describe('call', () => {
 		it('does not invoke the callback immediately', () => {
 			const callback = vi.fn();

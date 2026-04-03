@@ -90,7 +90,7 @@ export class EditorProcessor {
 
 	/** Pass 2: Runs all cleanup sub-passes on each list block. */
 	private runCleanupPass(filePath: string): void {
-		const blocks = this.handler.identifyListBlocks(this.lines);
+		const blocks = this.handler.relAnalyzer.identifyListBlocks(this.lines);
 		const knownIds = this.collectKnownIds(filePath);
 		const vaultDepIds = this.depCache.getAll();
 
@@ -110,8 +110,9 @@ export class EditorProcessor {
 	 */
 	private collectKnownIds(filePath: string): Set<string> {
 		const knownIds = new Set<string>(this.idCache.getAllExcluding(filePath));
+		const parser = this.handler.parser;
 		for (const line of this.lines) {
-			const id = this.handler.getTaskId(line);
+			const id = parser.getTaskId(line);
 			if (id) {
 				knownIds.add(id);
 			}
@@ -123,9 +124,10 @@ export class EditorProcessor {
 	private collectIdsInRange(
 		block: { start: number; end: number },
 	): Set<string> {
+		const parser = this.handler.parser;
 		const ids = new Set<string>();
 		for (let i = block.start; i < block.end; i++) {
-			const id = this.handler.getTaskId(this.lines[i]!);
+			const id = parser.getTaskId(this.lines[i]!);
 			if (id) {
 				ids.add(id);
 			}
@@ -136,10 +138,11 @@ export class EditorProcessor {
 	/** Pass 2a: Removes stale `⛔` from former parents within a block. */
 	private cleanStaleDeps(blockIds: Set<string>): void {
 		const blockLines = this.lines.slice(this.currentBlock.start, this.currentBlock.end);
-		const relationships = this.handler.buildRelationshipMap(blockLines);
+		const analyzer = this.handler.relAnalyzer;
+		const relationships = analyzer.buildRelationshipMap(blockLines);
 		for (let bi = 0; bi < blockLines.length; bi++) {
 			const line = blockLines[bi]!;
-			const desiredDeps = this.handler.getDesiredDepsForParent(
+			const desiredDeps = analyzer.getDesiredDepsForParent(
 				blockLines, bi, relationships,
 			);
 			const cleaned = this.handler.removeStaleDeps(line, desiredDeps, blockIds);
@@ -163,16 +166,17 @@ export class EditorProcessor {
 
 	/** Pass 2c: Removes orphaned `🆔` with no `⛔` referencing them. */
 	private cleanOrphanedIds(vaultDepIds: Set<string>): void {
+		const parser = this.handler.parser;
 		const start = this.currentBlock.start;
 		for (let i = start; i < this.currentBlock.end; i++) {
 			const line = this.lines[i]!;
-			const id = this.handler.getTaskId(line);
+			const id = parser.getTaskId(line);
 			if (
 				id &&
 				!this.handler.isIdReferencedAsDep(this.lines, id) &&
 				!vaultDepIds.has(id)
 			) {
-				const cleaned = this.handler.removeIdFromLine(line);
+				const cleaned = parser.removeIdFromLine(line);
 				this.applyCleanedLine(i - start, cleaned);
 			}
 		}
