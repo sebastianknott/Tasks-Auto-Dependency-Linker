@@ -8,7 +8,8 @@
 import type { IndentationHandler } from './indentation-handler';
 import type { TaskParser } from './task-parser';
 import type { RelationshipAnalyzer } from './relationship-analyzer';
-import type { EditorLike, MarkerCacheLike } from './types';
+import { CursorGuard } from './cursor-guard';
+import type { EditorLike, LineEditor, MarkerCacheLike } from './types';
 
 /**
  * Orchestrates processing all lines in an editor.
@@ -32,7 +33,7 @@ export class EditorProcessor {
 	private readonly depCache: MarkerCacheLike;
 
 	/** Active editor for the current processAllLines call. */
-	private editor!: EditorLike;
+	private editor!: LineEditor;
 	/** Snapshot of all editor lines, updated in-place by applyCleanedLine. */
 	private lines!: string[];
 	/** The list block currently being cleaned. */
@@ -55,14 +56,20 @@ export class EditorProcessor {
 	/**
 	 * Processes every line in the editor for dependency linking.
 	 *
+	 * The editor is wrapped in a {@link CursorGuard} so that, when a line
+	 * is rewritten, the user's caret or selection is restored to where it
+	 * was instead of jumping to the end of the line.
+	 *
 	 * @param editor - The editor whose lines are processed.
 	 * @param filePath - Path of the file being edited, used to
 	 *   exclude its own IDs from cross-file checks.
 	 */
 	processAllLines(editor: EditorLike, filePath: string): void {
-		this.editor = editor;
+		const guard = new CursorGuard(editor);
+		this.editor = guard;
 		this.runLinkPass();
 		this.runCleanupPass(filePath);
+		guard.restore();
 	}
 
 	/**

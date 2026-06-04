@@ -5,9 +5,12 @@ import { RelationshipAnalyzer } from '../src/relationship-analyzer';
 import type { MarkerCacheLike } from '../src/types';
 import { TaskParser } from '../src/task-parser';
 import { IdEngine } from '../src/id-engine';
+import { TaskMetadataParser } from '../src/task-metadata-parser';
+import { MetadataSyncCache } from '../src/metadata-sync-cache';
+import { MetadataInheritor } from '../src/metadata-inheritor';
 
 /** Minimal Editor mock matching Obsidian's Editor interface surface we use. */
-function createMockEditor(lines: string[]) {
+function createMockEditor(lines: string[], cursor = { line: 0, ch: 0 }) {
 	return {
 		lineCount: vi.fn(() => lines.length),
 		getLine: vi.fn((n: number) => {
@@ -19,6 +22,8 @@ function createMockEditor(lines: string[]) {
 		setLine: vi.fn((n: number, text: string) => {
 			lines[n] = text;
 		}),
+		getCursor: vi.fn((_which?: 'anchor' | 'head') => cursor),
+		setSelection: vi.fn(),
 	};
 }
 
@@ -45,7 +50,16 @@ function createTestProcessor(
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
 	const idEngine = new IdEngine();
 	const relAnalyzer = new RelationshipAnalyzer(parser);
-	const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
+	const metadataParser = new TaskMetadataParser();
+	const handler = new IndentationHandler(
+		parser,
+		idEngine,
+		relAnalyzer,
+		new MetadataInheritor(
+			metadataParser,
+			new MetadataSyncCache(parser, metadataParser, relAnalyzer),
+		),
+	);
 	const processor = new EditorProcessor(
 		handler,
 		parser,
@@ -77,6 +91,27 @@ describe('EditorProcessor', () => {
 		processor.processAllLines(editor, '');
 
 		expect(editor.setLine).not.toHaveBeenCalled();
+	});
+
+	it('restores the cursor after editing so it does not jump to end of line', () => {
+		const { processor } = createTestProcessor(['- [ ] Parent', '\t- [ ] Child']);
+		const lines = ['- [ ] Parent', '\t- [ ] Child'];
+		const cursor = { line: 1, ch: 6 };
+		const editor = createMockEditor(lines, cursor);
+
+		processor.processAllLines(editor, '');
+
+		// A line changed, so the selection is restored to where it started.
+		expect(editor.setSelection).toHaveBeenCalledWith(cursor, cursor);
+	});
+
+	it('does not touch the cursor when no line changes', () => {
+		const { processor } = createTestProcessor([]);
+		const editor = createMockEditor(['plain text, not a task'], { line: 0, ch: 4 });
+
+		processor.processAllLines(editor, '');
+
+		expect(editor.setSelection).not.toHaveBeenCalled();
 	});
 
 	it('processes a multi-level hierarchy', () => {
@@ -240,7 +275,16 @@ describe('EditorProcessor', () => {
 			const spaceParser = new TaskParser({ useTab: false, tabSize: 4 });
 			const idEngine = new IdEngine();
 			const spaceRelAnalyzer = new RelationshipAnalyzer(spaceParser);
-			const handler = new IndentationHandler(spaceParser, idEngine, spaceRelAnalyzer);
+			const spaceMetadataParser = new TaskMetadataParser();
+			const handler = new IndentationHandler(
+				spaceParser,
+				idEngine,
+				spaceRelAnalyzer,
+				new MetadataInheritor(
+					spaceMetadataParser,
+					new MetadataSyncCache(spaceParser, spaceMetadataParser, spaceRelAnalyzer),
+				),
+			);
 			const existingIds = new Set(['abc444', 'abc123']);
 			const processor = new EditorProcessor(
 				handler, spaceParser, spaceRelAnalyzer, createIdCache(existingIds), createDepCache(),
