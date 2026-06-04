@@ -3,6 +3,9 @@ import { TaskParser } from './task-parser';
 import type { IndentConfig } from './task-parser';
 import { IdEngine, IdCache, DepCache } from './id-engine';
 import { RelationshipAnalyzer } from './relationship-analyzer';
+import { TaskMetadataParser } from './task-metadata-parser';
+import { MetadataSyncCache } from './metadata-sync-cache';
+import { MetadataInheritor } from './metadata-inheritor';
 import { IndentationHandler } from './indentation-handler';
 import { EditorProcessor } from './editor-processor';
 import { Debounce } from './utils';
@@ -18,6 +21,7 @@ export default class TasksAutoDependencyLinker extends Plugin {
 	private debounce!: Debounce;
 	private idCache!: IdCache;
 	private depCache!: DepCache;
+	private syncCache!: MetadataSyncCache;
 	private processor!: EditorProcessor;
 
 	/** Obsidian Tasks plugin ID in the community plugins registry. */
@@ -45,7 +49,12 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		const parser = new TaskParser(indentConfig);
 		const idEngine = new IdEngine();
 		const relAnalyzer = new RelationshipAnalyzer(parser);
-		const handler = new IndentationHandler(parser, idEngine, relAnalyzer);
+		const metadataParser = new TaskMetadataParser();
+		this.syncCache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
+		const inheritor = new MetadataInheritor(metadataParser, this.syncCache);
+		const handler = new IndentationHandler(
+			parser, idEngine, relAnalyzer, inheritor,
+		);
 
 		this.idCache = new IdCache(idEngine);
 		this.depCache = new DepCache(idEngine);
@@ -84,12 +93,14 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		}
 		this.idCache.buildFromFiles(entries);
 		this.depCache.buildFromFiles(entries);
+		this.syncCache.buildFromFiles(entries);
 	}
 
 	private async updateCacheForFile(file: TFile): Promise<void> {
 		const content = await this.app.vault.cachedRead(file);
 		this.idCache.updateForFile(file.path, content);
 		this.depCache.updateForFile(file.path, content);
+		this.syncCache.updateForFile(file.path, content);
 	}
 
 	private processActiveEditor(): void {

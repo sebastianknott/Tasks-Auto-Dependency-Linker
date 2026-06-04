@@ -107,6 +107,8 @@ describe('TasksAutoDependencyLinker', () => {
 					throw new RangeError(`out of bounds: ${n}`);
 				},
 				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
 			};
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
 
@@ -140,6 +142,8 @@ describe('TasksAutoDependencyLinker', () => {
 					throw new RangeError(`out of bounds: ${n}`);
 				},
 				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
 			};
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
 
@@ -290,6 +294,8 @@ describe('TasksAutoDependencyLinker', () => {
 					throw new RangeError(`out of bounds: ${n}`);
 				},
 				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
 			};
 
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
@@ -312,6 +318,8 @@ describe('TasksAutoDependencyLinker', () => {
 				lineCount: () => 1,
 				getLine: () => '- [ ] Root task',
 				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
 			};
 
 			p.app.workspace.getActiveViewOfType = () => ({
@@ -340,6 +348,8 @@ describe('TasksAutoDependencyLinker', () => {
 				lineCount: () => 1,
 				getLine: () => '- [ ] Root task',
 				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
 			};
 
 			// view.file is undefined (no file property)

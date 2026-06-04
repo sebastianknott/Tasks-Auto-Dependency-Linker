@@ -65,6 +65,28 @@ Moving a task from one parent to another is handled seamlessly:
     - [ ] Design API schema 🆔 abc123
 ```
 
+### Metadata inheritance
+
+When a task becomes a subtask (the moment it is indented under a parent, or moved from one parent to another), it inherits the parent's **due date** (`📅`), **scheduled date** (`⏳`), and **priority** (`🔺 ⏫ 🔼 🔽 ⏬`):
+
+```markdown
+<!-- Before indenting "Design API schema" under "Build backend" -->
+- [ ] Build backend 📅 2025-06-01 ⏳ 2025-05-20 ⏫
+- [ ] Design API schema
+
+<!-- After indenting -->
+- [ ] Build backend 📅 2025-06-01 ⏳ 2025-05-20 ⏫ ⛔ abc123
+	- [ ] Design API schema 🆔 abc123 📅 2025-06-01 ⏳ 2025-05-20 ⏫
+```
+
+Each field is **inherited until you override it**, evaluated independently per field:
+
+- **First inheritance.** When a task is newly indented under a parent, or moved to a different parent, it picks up that parent's metadata for any field it does not already have.
+- **Changes follow the parent.** While a child still holds the value it inherited (or has none of its own), changing that field on the parent updates the child too. This includes a field the parent gains later: add a scheduled date to a parent after its subtasks already exist, and those subtasks pick it up. If you push the parent's due date back, a child that still carried the parent's old due date moves with it.
+- **Your edits win.** Once you give the child its own value for a field, the plugin treats that field as yours and never overwrites it again, no matter how the parent changes later.
+- **Clearing the parent leaves the child alone.** Removing a field from the parent does not remove it from the child.
+- The **start date** (`🛫`) is intentionally **not** inherited.
+
 ### Rules
 
 - **Parent-child only.** Only direct parent-child relationships are tracked. Siblings are independent.

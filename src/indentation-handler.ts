@@ -8,19 +8,21 @@
 import { TaskParser } from './task-parser';
 import { IdEngine } from './id-engine';
 import type { RelationshipAnalyzer } from './relationship-analyzer';
-import type { EditorLike } from './types';
+import type { MetadataInheritor } from './metadata-inheritor';
+import type { LineEditor } from './types';
 
 /**
  * Processes indentation changes and manages task dependency markers.
  *
- * Instantiate with a {@link TaskParser}, {@link IdEngine}, and
- * {@link RelationshipAnalyzer}, then call {@link processLine} on each
- * line that may have changed indentation.
+ * Instantiate with a {@link TaskParser}, {@link IdEngine},
+ * {@link RelationshipAnalyzer}, and {@link MetadataInheritor}, then call
+ * {@link processLine} on each line that may have changed indentation.
  */
 export class IndentationHandler {
 	private readonly parser: TaskParser;
 	private readonly relAnalyzer: RelationshipAnalyzer;
 	private readonly idEngine: IdEngine;
+	private readonly inheritor: MetadataInheritor;
 	/** Snapshot of editor lines set once before each link pass. */
 	private snapshot: string[] = new Array<string>();
 
@@ -28,10 +30,12 @@ export class IndentationHandler {
 		parser: TaskParser,
 		idEngine: IdEngine,
 		relAnalyzer: RelationshipAnalyzer,
+		inheritor: MetadataInheritor,
 	) {
 		this.parser = parser;
 		this.idEngine = idEngine;
 		this.relAnalyzer = relAnalyzer;
+		this.inheritor = inheritor;
 	}
 
 	/**
@@ -41,7 +45,7 @@ export class IndentationHandler {
 	 * {@link processLine} call can find parent tasks from the snapshot
 	 * in O(1) per line rather than rebuilding the full array on each call.
 	 */
-	prepareForLinkPass(editor: EditorLike): void {
+	prepareForLinkPass(editor: LineEditor): void {
 		const count = editor.lineCount();
 		this.snapshot = [];
 		for (let i = 0; i < count; i++) {
@@ -51,10 +55,17 @@ export class IndentationHandler {
 
 	/**
 	 * Processes a single line: if it is an indented task with a parent,
-	 * ensures the child has a `🆔` and the parent has a `⛔` for that ID.
+	 * ensures the child has a `🆔` and the parent has a `⛔` for that ID,
+	 * then synchronises the parent's metadata onto the child.
+	 *
+	 * The child inherits the parent's due date, scheduled date, and
+	 * priority when it has none of its own, and later receives the
+	 * parent's changes as long as it still holds the previously inherited
+	 * value. A value the user has changed on the child is left alone. See
+	 * {@link syncMetadataFromParent}.
 	 */
 	processLine(
-		editor: EditorLike,
+		editor: LineEditor,
 		lineIndex: number,
 		existingIds: Set<string>,
 	): void {
@@ -65,11 +76,9 @@ export class IndentationHandler {
 
 		let childLine = editor.getLine(lineIndex);
 		let childId = this.parser.getTaskId(childLine);
-
 		if (!childId) {
 			childId = this.idEngine.generateUniqueId(existingIds);
 			childLine = this.parser.addIdToLine(childLine, childId);
-			editor.setLine(lineIndex, childLine);
 			existingIds.add(childId);
 		}
 
@@ -81,7 +90,14 @@ export class IndentationHandler {
 		if (updatedParentLine !== parentLine) {
 			editor.setLine(parentIndex, updatedParentLine);
 		}
+
+		childLine = this.inheritor.syncFromParent(childId, childLine, parentLine);
+
+		if (childLine !== editor.getLine(lineIndex)) {
+			editor.setLine(lineIndex, childLine);
+		}
 	}
+
 
 	/**
 	 * Removes `⛔` markers from a task line that are not in the desired
