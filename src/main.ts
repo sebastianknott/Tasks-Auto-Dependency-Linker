@@ -1,5 +1,5 @@
 import { Plugin, MarkdownView } from 'obsidian';
-import type { Editor, TFile } from 'obsidian';
+import type { Editor } from 'obsidian';
 import { TaskParser } from './task-parser';
 import type { IndentConfig } from './task-parser';
 import { IdEngine, IdCache, DepCache } from './id-engine';
@@ -14,6 +14,8 @@ import { ObsidianEditorAdapter } from './obsidian-editor-adapter';
 import { LineWriteArbiter } from './line-write-arbiter';
 import { MarkerAccessorRegistry } from './marker-accessor';
 import { Debounce } from './utils';
+import { CursorLineWatcher } from './cursor-line-watcher';
+import { PluginTriggers } from './plugin-triggers';
 
 /**
  * Tasks Auto-Dependency Linker plugin for Obsidian.
@@ -30,6 +32,7 @@ export default class TasksAutoDependencyLinker extends Plugin {
 	private coordinator!: CacheCoordinator;
 	private processor!: EditorProcessor;
 	private arbiter!: LineWriteArbiter;
+	private watcher!: CursorLineWatcher;
 
 	/** Obsidian Tasks plugin ID in the community plugins registry. */
 	private static readonly TASKS_PLUGIN_ID = 'obsidian-tasks-plugin';
@@ -45,7 +48,9 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		}
 
 		this.buildComponents();
-		this.registerVaultAndWorkspaceEvents();
+		new PluginTriggers(
+			this, this.coordinator, this.arbiter, this.debounce, this.watcher,
+		).register();
 	}
 
 	onunload(): void {
@@ -83,54 +88,7 @@ export default class TasksAutoDependencyLinker extends Plugin {
 			handler, parser, relAnalyzer, this.idCache, this.depCache, this.arbiter,
 		);
 		this.debounce = new Debounce(() => this.processActiveEditor());
-	}
-
-	/** Wires vault and workspace events to the cache coordinator and processor. */
-	private registerVaultAndWorkspaceEvents(): void {
-		this.app.workspace.onLayoutReady(
-			async () => this.coordinator.buildAll(this.app.vault.getMarkdownFiles()),
-		);
-
-		this.registerEvent(
-			this.app.vault.on('modify', (file: TFile) => {
-				if (file.extension === 'md') {
-					void this.coordinator.updateForFile(file);
-				}
-			}),
-		);
-
-		this.registerEvent(
-			this.app.vault.on('delete', (file) => this.coordinator.handleDelete(file)),
-		);
-
-		this.registerEvent(
-			this.app.vault.on(
-				'rename',
-				async (file, oldPath) => this.coordinator.handleRename(file, oldPath),
-			),
-		);
-
-		this.registerEvent(
-			this.app.workspace.on('file-open', (file) => void this.seedArbiterForFile(file)),
-		);
-
-		this.registerEvent(
-			this.app.workspace.on('editor-change', () => this.debounce.call()),
-		);
-	}
-
-	/**
-	 * Primes the arbiter's snapshot for a newly opened file from its
-	 * on-disk content, so the very first edit after opening is already
-	 * protected. Reads via `cachedRead` because the editor is not
-	 * guaranteed to exist yet when `file-open` fires.
-	 */
-	private async seedArbiterForFile(file: TFile | null): Promise<void> {
-		if (!file || file.extension !== 'md') {
-			return;
-		}
-		const content = await this.app.vault.cachedRead(file);
-		this.arbiter.seedFromText(file.path, content);
+		this.watcher = new CursorLineWatcher(() => this.debounce.call());
 	}
 
 	private processActiveEditor(): void {

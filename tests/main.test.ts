@@ -1,12 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TFile, TFolder } from 'obsidian';
 import TasksAutoDependencyLinker from '../src/main';
+import type { CapturedUpdateListener } from './__mocks__/codemirror-view';
+import type { ViewUpdate } from '@codemirror/view';
 
 /**
  * Helper: cast plugin to access mock internals set up by the obsidian mock.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PluginInternals = any;
+
+/**
+ * Builds a structural fake `ViewUpdate` for driving the CursorLineWatcher
+ * extension registered by `main.ts`'s `buildComponents()`. Only the fields
+ * `CursorLineWatcher.handle` actually reads are populated.
+ */
+function fakeCursorUpdate(options: { selectionSet: boolean; lineForHead: number }): ViewUpdate {
+	const lineAt = vi.fn((_pos: number) => ({ number: options.lineForHead }));
+	return {
+		selectionSet: options.selectionSet,
+		docChanged: false,
+		state: {
+			selection: { main: { head: 0 } },
+			doc: { lineAt },
+		},
+	} as unknown as ViewUpdate;
+}
 
 describe('TasksAutoDependencyLinker', () => {
 	let plugin: TasksAutoDependencyLinker;
@@ -618,6 +637,52 @@ describe('TasksAutoDependencyLinker', () => {
 			vi.useRealTimers();
 
 			expect(callOrder).toEqual(['processAllLines', 'getValue', 'updateFromLiveContent']);
+		});
+	});
+
+	describe('cursor-line-watcher wiring (buildComponents)', () => {
+		it('registers exactly one editor extension during onload', async () => {
+			const p = plugin as PluginInternals;
+
+			await plugin.onload();
+
+			expect(p._registeredEditorExtensions.length).toBe(1);
+		});
+
+		it('routes a cursor line change through the debounce, not a direct synchronous call', async () => {
+			const p = plugin as PluginInternals;
+
+			const mockEditor = {
+				lineCount: () => 2,
+				getLine: (n: number) => {
+					if (n === 0) return '- [ ] Parent';
+					if (n === 1) return '\t- [ ] Child';
+					throw new RangeError(`out of bounds: ${n}`);
+				},
+				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
+			};
+			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
+
+			await plugin.onload();
+
+			const ext = p._registeredEditorExtensions[0] as CapturedUpdateListener;
+
+			// First observation only records the line; must not fire yet.
+			ext.fn(fakeCursorUpdate({ selectionSet: true, lineForHead: 1 }));
+			expect(mockEditor.setLine).not.toHaveBeenCalled();
+
+			// Moving to a different line schedules a debounced pass, not an
+			// immediate one: nothing happens before the timer fires.
+			vi.useFakeTimers();
+			ext.fn(fakeCursorUpdate({ selectionSet: true, lineForHead: 2 }));
+			expect(mockEditor.setLine).not.toHaveBeenCalled();
+
+			vi.advanceTimersByTime(300);
+			vi.useRealTimers();
+
+			expect(mockEditor.setLine).toHaveBeenCalled();
 		});
 	});
 });

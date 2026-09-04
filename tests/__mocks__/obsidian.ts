@@ -7,9 +7,14 @@
 
 export class Component {
 	_registeredEvents: unknown[] = [];
+	_registeredEditorExtensions: unknown[] = [];
 
 	registerEvent(eventRef: unknown): void {
 		this._registeredEvents.push(eventRef);
+	}
+
+	registerEditorExtension(extension: unknown): void {
+		this._registeredEditorExtensions.push(extension);
 	}
 }
 
@@ -49,6 +54,7 @@ export class Plugin extends Component {
 				(this as Plugin)._layoutReadyCb = cb;
 			},
 			getActiveViewOfType: (_type: unknown): unknown => null,
+			getActiveFile: (): TFile | null => null,
 		}),
 		plugins: {
 			enabledPlugins: new Set<string>(['obsidian-tasks-plugin']),
