@@ -1,6 +1,3 @@
 (D) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy
-(A) Can't add id (for other purposes) by Hand +bug @dev
 (B) Cache blind spot: 'ID' typed into another open but unsaved file is invisible because vault modify fires on save only +bug @dev
-(A) Forward reference: a blocker pointing at an id that does not exist yet is removed by cleanup pass 2b +bug @dev
-(C) Known limit: deleting a marker and editing the line text within the same 300ms debounce window lets the marker return once +bug @dev
 (B) Stale suppression: LineWriteArbiter keeps suppressedTypes when a file's whole content is replaced externally (sync, git checkout, vault overwrite) while the cursor stays on the same line index, silently blocking marker writes on unrelated new content. beginPass only resets on filePath or cursorLine change +bug @dev
