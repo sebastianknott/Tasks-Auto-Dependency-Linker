@@ -165,6 +165,9 @@ export class TaskParser {
 	/** Removes the `🆔 <id>` marker from a line. Cleans up whitespace. */
 	removeIdFromLine(line: string): string {
 		const pattern = /\s?🆔\s[a-zA-Z0-9_-]+/;
+		if (!pattern.test(line)) {
+			return line;
+		}
 		return line.replace(pattern, '').trimEnd();
 	}
 }

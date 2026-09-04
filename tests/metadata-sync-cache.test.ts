@@ -155,4 +155,60 @@ describe('MetadataSyncCache', () => {
 			});
 		});
 	});
+
+	describe('pruneFile', () => {
+		it('drops the exact path', () => {
+			cache.buildFromFiles([
+				{
+					path: 'a.md',
+					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
+				},
+			]);
+			cache.pruneFile('a.md');
+			expect(cache.get('aaa')).toBeUndefined();
+		});
+
+		it('drops descendants under path + "/"', () => {
+			cache.buildFromFiles([
+				{
+					path: 'notes/a.md',
+					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
+				},
+				{
+					path: 'notes/sub/b.md',
+					content: '- [ ] P \u{1F4C5} 2025-02-02\n\t- [ ] C \u{1F194} bbb',
+				},
+				{
+					path: 'other.md',
+					content: '- [ ] P \u{1F4C5} 2025-03-03\n\t- [ ] C \u{1F194} ccc',
+				},
+			]);
+			cache.pruneFile('notes');
+			expect(cache.get('aaa')).toBeUndefined();
+			expect(cache.get('bbb')).toBeUndefined();
+			expect(cache.get('ccc')).toBeDefined();
+		});
+
+		it('leaves a sibling path with the same prefix but no separator alone', () => {
+			cache.buildFromFiles([
+				{
+					path: 'notes-archive.md',
+					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
+				},
+			]);
+			cache.pruneFile('notes');
+			expect(cache.get('aaa')).toBeDefined();
+		});
+
+		it('is a no-op when the path is not present', () => {
+			cache.buildFromFiles([
+				{
+					path: 'a.md',
+					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
+				},
+			]);
+			cache.pruneFile('nonexistent.md');
+			expect(cache.get('aaa')).toBeDefined();
+		});
+	});
 });

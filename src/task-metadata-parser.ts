@@ -23,10 +23,33 @@ export class TaskMetadataParser {
 	 */
 	static readonly DUE_REGEX = /[\u{1F4C5}\u{1F4C6}\u{1F5D3}]\s(\d{4}-\d{2}-\d{2})/u;
 
+
+	/**
+	 * Matches any due-date glyph regardless of what follows it. Used to
+	 * detect a due marker that is present but not yet a well-formed date
+	 * (mid-deletion, or mid-typing), which {@link DUE_REGEX} alone cannot
+	 * distinguish from "no due marker at all".
+	 */
+	static readonly DUE_GLYPH_REGEX = /[\u{1F4C5}\u{1F4C6}\u{1F5D3}]/u;
+
 	/** Extracts the due date from a line, or null when absent. */
 	getDueDate(line: string): string | null {
 		const match = line.match(TaskMetadataParser.DUE_REGEX);
 		return match ? match[1]! : null;
+	}
+
+	/**
+	 * Removes a due-date marker (including tolerated alternate glyphs)
+	 * from the line. Cleans up the surrounding whitespace so a mid-line
+	 * removal does not leave a double space. Returns the line unchanged
+	 * when no due date is present.
+	 */
+	removeDueDate(line: string): string {
+		const pattern = /\s?[\u{1F4C5}\u{1F4C6}\u{1F5D3}]\s\d{4}-\d{2}-\d{2}/u;
+		if (!pattern.test(line)) {
+			return line;
+		}
+		return line.replace(pattern, '').trimEnd();
 	}
 
 	/**
@@ -36,10 +59,33 @@ export class TaskMetadataParser {
 	 */
 	static readonly SCHEDULED_REGEX = /[\u{23F3}\u{231B}]\s(\d{4}-\d{2}-\d{2})/u;
 
+
+	/**
+	 * Matches any scheduled-date glyph regardless of what follows it. Used
+	 * to detect a scheduled marker that is present but not yet a
+	 * well-formed date, which {@link SCHEDULED_REGEX} alone cannot
+	 * distinguish from "no scheduled marker at all".
+	 */
+	static readonly SCHEDULED_GLYPH_REGEX = /[\u{23F3}\u{231B}]/u;
+
 	/** Extracts the scheduled date from a line, or null when absent. */
 	getScheduledDate(line: string): string | null {
 		const match = line.match(TaskMetadataParser.SCHEDULED_REGEX);
 		return match ? match[1]! : null;
+	}
+
+	/**
+	 * Removes a scheduled-date marker (including the tolerated alternate
+	 * glyph) from the line. Cleans up the surrounding whitespace so a
+	 * mid-line removal does not leave a double space. Returns the line
+	 * unchanged when no scheduled date is present.
+	 */
+	removeScheduledDate(line: string): string {
+		const pattern = /\s?[\u{23F3}\u{231B}]\s\d{4}-\d{2}-\d{2}/u;
+		if (!pattern.test(line)) {
+			return line;
+		}
+		return line.replace(pattern, '').trimEnd();
 	}
 
 	/**
@@ -151,5 +197,22 @@ export class TaskMetadataParser {
 		}
 		const currentGlyph = TaskMetadataParser.GLYPH_BY_PRIORITY.get(current)!;
 		return line.replace(currentGlyph, glyph);
+	}
+
+
+	/**
+	 * Removes the priority glyph from the line, whichever level it is.
+	 * Cleans up the surrounding whitespace so a mid-line removal does
+	 * not leave a double space. Returns the line unchanged when no
+	 * priority is present.
+	 */
+	removePriority(line: string): string {
+		const current = this.getPriority(line);
+		if (current === null) {
+			return line;
+		}
+		const glyph = TaskMetadataParser.GLYPH_BY_PRIORITY.get(current)!;
+		const pattern = new RegExp(`\\s?${glyph}`);
+		return line.replace(pattern, '').trimEnd();
 	}
 }

@@ -287,6 +287,7 @@ describe('TaskParser', () => {
 		it.each([
 			['removes the ID marker from a task line', '- [ ] Task 🆔 abc123', '- [ ] Task'],
 			['returns the line unchanged if no ID marker exists', '- [ ] No ID here', '- [ ] No ID here'],
+			['does not strip a trailing space when there is no ID marker to remove', '- [ ] Task ', '- [ ] Task '],
 			['preserves dependencies when removing the ID', '- [ ] Task 🆔 abc123 ⛔ def456,ghi789', '- [ ] Task ⛔ def456,ghi789'],
 			['preserves leading whitespace (indentation) after removal', '\t- [ ] Task 🆔 abc123', '\t- [ ] Task'],
 			['cleans up trailing whitespace after removal', '- [ ] Task 🆔 abc123  ', '- [ ] Task'],

@@ -22,7 +22,8 @@ export interface EditorPositionLike {
 export interface LineEditor {
 	lineCount(): number;
 	getLine(n: number): string;
-	setLine(n: number, text: string): void;
+	/** Returns the content the line actually holds after the write. */
+	setLine(n: number, text: string): string;
 }
 
 /**

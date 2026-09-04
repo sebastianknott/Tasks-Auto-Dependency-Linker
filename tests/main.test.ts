@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TFile } from 'obsidian';
+import { TFile, TFolder } from 'obsidian';
 import TasksAutoDependencyLinker from '../src/main';
 
 /**
@@ -72,7 +72,7 @@ describe('TasksAutoDependencyLinker', () => {
 			await plugin.onload();
 
 			const p = plugin as PluginInternals;
-			expect(p._registeredEvents.length).toBe(2);
+			expect(p._registeredEvents.length).toBe(5);
 		});
 
 		it('registers a layoutReady callback that calls buildIdCache', async () => {
@@ -266,6 +266,151 @@ describe('TasksAutoDependencyLinker', () => {
 		});
 	});
 
+	describe('vault delete handler', () => {
+		it('forgets a deleted file so its ids no longer protect dependents', async () => {
+			const p = plugin as PluginInternals;
+			p.app.vault.getMarkdownFiles = () => [];
+			p.app.vault.cachedRead = vi.fn(async (file: TFile) => {
+				if (file.path === 'a.md') {
+					return '- [ ] Task \u{1F194} aaa111';
+				}
+				return '';
+			});
+
+			await plugin.onload();
+
+			const fileA = new TFile();
+			fileA.path = 'a.md';
+			await p.coordinator.updateForFile(fileA);
+			expect(p.idCache.getAll().has('aaa111')).toBe(true);
+
+			const deleteHandlers = p._vaultEmitter.getHandlers('delete');
+			expect(deleteHandlers.length).toBe(1);
+			deleteHandlers[0].cb(fileA);
+
+			expect(p.idCache.getAll().has('aaa111')).toBe(false);
+		});
+
+		it('drops descendants of a deleted folder path', async () => {
+			const p = plugin as PluginInternals;
+			p.app.vault.getMarkdownFiles = () => [];
+			p.app.vault.cachedRead = vi.fn(
+				async () => '- [ ] Task \u{1F194} nested1',
+			);
+
+			await plugin.onload();
+
+			const fileA = new TFile();
+			fileA.path = 'notes/a.md';
+			await p.coordinator.updateForFile(fileA);
+			expect(p.idCache.getAll().has('nested1')).toBe(true);
+
+			const folder = new TFolder();
+			folder.path = 'notes';
+			const deleteHandlers = p._vaultEmitter.getHandlers('delete');
+			deleteHandlers[0].cb(folder);
+
+			expect(p.idCache.getAll().has('nested1')).toBe(false);
+		});
+	});
+
+	describe('vault rename handler', () => {
+		it('forgets the old path and re-indexes the file under the new path when a TFile is renamed', async () => {
+			const p = plugin as PluginInternals;
+			p.app.vault.getMarkdownFiles = () => [];
+			p.app.vault.cachedRead = vi.fn(async () => '- [ ] Task \u{1F194} renamed1');
+
+			await plugin.onload();
+
+			const oldFile = new TFile();
+			oldFile.path = 'old.md';
+			await p.coordinator.updateForFile(oldFile);
+			expect(p.idCache.getAll().has('renamed1')).toBe(true);
+
+			const renamedFile = new TFile();
+			renamedFile.path = 'new.md';
+
+			const renameHandlers = p._vaultEmitter.getHandlers('rename');
+			expect(renameHandlers.length).toBe(1);
+			await renameHandlers[0].cb(renamedFile, 'old.md');
+
+			// old path's contribution is gone, new path's content re-indexed
+			expect(p.idCache.getAll().has('renamed1')).toBe(true);
+		});
+
+		it('rebuilds the whole vault cache when a TFolder is renamed', async () => {
+			const p = plugin as PluginInternals;
+			const fileInFolder = new TFile();
+			fileInFolder.path = 'newfolder/a.md';
+			p.app.vault.getMarkdownFiles = () => [fileInFolder];
+			p.app.vault.cachedRead = vi.fn(async () => '- [ ] Task \u{1F194} folder1');
+
+			await plugin.onload();
+
+			const buildSpy = vi.spyOn(p.idCache, 'buildFromFiles');
+
+			const renamedFolder = new TFolder();
+			renamedFolder.path = 'newfolder';
+
+			const renameHandlers = p._vaultEmitter.getHandlers('rename');
+			await renameHandlers[0].cb(renamedFolder, 'oldfolder');
+
+			expect(buildSpy).toHaveBeenCalledWith([
+				{ path: 'newfolder/a.md', content: '- [ ] Task \u{1F194} folder1' },
+			]);
+			buildSpy.mockRestore();
+		});
+	});
+
+	describe('file-open handler', () => {
+		it('seeds the arbiter snapshot from the opened file\'s on-disk content', async () => {
+			const p = plugin as PluginInternals;
+			const file = new TFile();
+			file.path = 'opened.md';
+			file.extension = 'md';
+			p.app.vault.cachedRead = vi.fn(async () => '- [ ] Task \u{1F194} abc123');
+
+			await plugin.onload();
+			const seedSpy = vi.spyOn(p.arbiter, 'seedFromText');
+
+			const fileOpenHandlers = p._workspaceEmitter.getHandlers('file-open');
+			expect(fileOpenHandlers.length).toBe(1);
+			await fileOpenHandlers[0].cb(file);
+
+			expect(p.app.vault.cachedRead).toHaveBeenCalledWith(file);
+			expect(seedSpy).toHaveBeenCalledWith('opened.md', '- [ ] Task \u{1F194} abc123');
+			seedSpy.mockRestore();
+		});
+
+		it('does nothing when no file is open (null)', async () => {
+			const p = plugin as PluginInternals;
+			const readSpy = vi.fn(async () => '');
+			p.app.vault.cachedRead = readSpy;
+
+			await plugin.onload();
+
+			const fileOpenHandlers = p._workspaceEmitter.getHandlers('file-open');
+			await fileOpenHandlers[0].cb(null);
+
+			expect(readSpy).not.toHaveBeenCalled();
+		});
+
+		it('ignores non-md files', async () => {
+			const p = plugin as PluginInternals;
+			const readSpy = vi.fn(async () => '');
+			p.app.vault.cachedRead = readSpy;
+
+			await plugin.onload();
+
+			const cssFile = new TFile();
+			cssFile.extension = 'css';
+			const fileOpenHandlers = p._workspaceEmitter.getHandlers('file-open');
+			await fileOpenHandlers[0].cb(cssFile);
+
+			expect(readSpy).not.toHaveBeenCalled();
+		});
+	});
+
 	describe('processActiveEditor', () => {
 		it('does nothing when no active MarkdownView exists', async () => {
 			const p = plugin as PluginInternals;
@@ -320,6 +465,7 @@ describe('TasksAutoDependencyLinker', () => {
 				setLine: vi.fn(),
 				getCursor: () => ({ line: 0, ch: 0 }),
 				setSelection: vi.fn(),
+				getValue: vi.fn(() => '- [ ] Root task'),
 			};
 
 			p.app.workspace.getActiveViewOfType = () => ({
@@ -369,6 +515,109 @@ describe('TasksAutoDependencyLinker', () => {
 
 			expect(excludeSpy).toHaveBeenCalledWith('');
 			excludeSpy.mockRestore();
+		});
+
+		it('refreshes the coordinator with the live editor content after processing, for a file-backed view', async () => {
+			const p = plugin as PluginInternals;
+
+			const mockEditor = {
+				lineCount: () => 1,
+				getLine: () => '- [ ] Root task',
+				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
+				getValue: vi.fn(() => '- [ ] Root task \u{1F194} live1'),
+			};
+
+			p.app.workspace.getActiveViewOfType = () => ({
+				editor: mockEditor,
+				file: { path: 'folder/current.md' },
+			});
+
+			await plugin.onload();
+
+			const liveSpy = vi.spyOn(p.coordinator, 'updateFromLiveContent');
+
+			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
+			vi.useFakeTimers();
+			wsHandlers[0].cb();
+			vi.advanceTimersByTime(300);
+			vi.useRealTimers();
+
+			expect(liveSpy).toHaveBeenCalledWith(
+				'folder/current.md',
+				'- [ ] Root task \u{1F194} live1',
+			);
+			liveSpy.mockRestore();
+		});
+
+		it('does not refresh the coordinator with live content when the view has no backing file', async () => {
+			const p = plugin as PluginInternals;
+
+			const mockEditor = {
+				lineCount: () => 1,
+				getLine: () => '- [ ] Root task',
+				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
+				getValue: vi.fn(() => '- [ ] Root task'),
+			};
+
+			// view.file is undefined: a file-less markdown buffer
+			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
+
+			await plugin.onload();
+
+			const liveSpy = vi.spyOn(p.coordinator, 'updateFromLiveContent');
+
+			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
+			vi.useFakeTimers();
+			wsHandlers[0].cb();
+			vi.advanceTimersByTime(300);
+			vi.useRealTimers();
+
+			expect(liveSpy).not.toHaveBeenCalled();
+			expect(mockEditor.getValue).not.toHaveBeenCalled();
+			liveSpy.mockRestore();
+		});
+
+		it('refreshes the live cache only after processAllLines has finished writing markers', async () => {
+			const p = plugin as PluginInternals;
+			const callOrder: string[] = [];
+
+			const mockEditor = {
+				lineCount: () => 1,
+				getLine: () => '- [ ] Root task',
+				setLine: vi.fn(),
+				getCursor: () => ({ line: 0, ch: 0 }),
+				setSelection: vi.fn(),
+				getValue: vi.fn(() => {
+					callOrder.push('getValue');
+					return '- [ ] Root task \u{1F194} order1';
+				}),
+			};
+
+			p.app.workspace.getActiveViewOfType = () => ({
+				editor: mockEditor,
+				file: { path: 'folder/order.md' },
+			});
+
+			await plugin.onload();
+
+			vi.spyOn(p.processor, 'processAllLines').mockImplementation(() => {
+				callOrder.push('processAllLines');
+			});
+			vi.spyOn(p.coordinator, 'updateFromLiveContent').mockImplementation(() => {
+				callOrder.push('updateFromLiveContent');
+			});
+
+			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
+			vi.useFakeTimers();
+			wsHandlers[0].cb();
+			vi.advanceTimersByTime(300);
+			vi.useRealTimers();
+
+			expect(callOrder).toEqual(['processAllLines', 'getValue', 'updateFromLiveContent']);
 		});
 	});
 });

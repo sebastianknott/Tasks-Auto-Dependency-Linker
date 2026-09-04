@@ -81,7 +81,16 @@ export class MetadataSyncCache {
 	}
 
 	/** Removes all records previously contributed by the given file. */
-	private pruneFile(filePath: string): void {
+	pruneFile(filePath: string): void {
+		const prefix = `${filePath}/`;
+		for (const path of this.idsByFile.keys()) {
+			if (path === filePath || path.startsWith(prefix)) {
+				this.pruneExactPath(path);
+			}
+		}
+	}
+
+	private pruneExactPath(filePath: string): void {
 		const previousIds = this.idsByFile.get(filePath);
 		if (previousIds === undefined) {
 			return;

@@ -158,6 +158,118 @@ describe('TaskMetadataParser', () => {
 		});
 	});
 
+	describe('removeDueDate', () => {
+		it('strips a canonical due marker mid-line without a double space', () => {
+			expect(
+				parser.removeDueDate('- [ ] Task \u{1F4C5} 2025-01-01 \u{1F194} abc123'),
+			).toBe('- [ ] Task \u{1F194} abc123');
+		});
+
+		it('strips a due marker at the end of the line', () => {
+			expect(parser.removeDueDate('- [ ] Task \u{1F4C5} 2025-01-01')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('tolerates the tear-off calendar glyph', () => {
+			expect(parser.removeDueDate('- [ ] Task \u{1F4C6} 2025-02-20')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('tolerates the spiral calendar glyph', () => {
+			expect(parser.removeDueDate('- [ ] Task \u{1F5D3} 2025-03-25')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('returns the line unchanged when no due date is present', () => {
+			const line = '- [ ] Task with no date';
+			expect(parser.removeDueDate(line)).toBe(line);
+		});
+
+		it('does not strip a trailing space when there is no due marker to remove', () => {
+			expect(parser.removeDueDate('- [ ] Task ')).toBe('- [ ] Task ');
+		});
+
+		it('strips a due marker with nothing at all before it on the line', () => {
+			expect(parser.removeDueDate('\u{1F4C5} 2025-01-01')).toBe('');
+		});
+
+		it('collapses multiple spaces left behind before a mid-line marker removal', () => {
+			expect(parser.removeDueDate('- [ ] Task   \u{1F4C5} 2025-01-01')).toBe(
+				'- [ ] Task',
+			);
+		});
+	});
+
+	describe('removeScheduledDate', () => {
+		it('strips a canonical scheduled marker mid-line without a double space', () => {
+			expect(
+				parser.removeScheduledDate('- [ ] Task \u{23F3} 2025-04-10 \u{1F194} abc123'),
+			).toBe('- [ ] Task \u{1F194} abc123');
+		});
+
+		it('strips a scheduled marker at the end of the line', () => {
+			expect(parser.removeScheduledDate('- [ ] Task \u{23F3} 2025-04-10')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('tolerates the hourglass-done glyph', () => {
+			expect(parser.removeScheduledDate('- [ ] Task \u{231B} 2025-05-11')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('returns the line unchanged when no scheduled date is present', () => {
+			const line = '- [ ] Task with no date';
+			expect(parser.removeScheduledDate(line)).toBe(line);
+		});
+
+		it('does not strip a trailing space when there is no scheduled marker to remove', () => {
+			expect(parser.removeScheduledDate('- [ ] Task ')).toBe('- [ ] Task ');
+		});
+
+		it('strips a scheduled marker with nothing at all before it on the line', () => {
+			expect(parser.removeScheduledDate('\u{23F3} 2025-01-01')).toBe('');
+		});
+
+		it('collapses multiple spaces left behind before a mid-line marker removal', () => {
+			expect(parser.removeScheduledDate('- [ ] Task   \u{23F3} 2025-01-01')).toBe(
+				'- [ ] Task',
+			);
+		});
+	});
+
+	describe('removePriority', () => {
+		it.each<[string, Priority]>([
+			['strips the highest priority glyph', 'highest'],
+			['strips the high priority glyph', 'high'],
+			['strips the medium priority glyph', 'medium'],
+			['strips the low priority glyph', 'low'],
+			['strips the lowest priority glyph', 'lowest'],
+		])('%s', (_desc, priority) => {
+			const glyph = TaskMetadataParser.GLYPH_BY_PRIORITY.get(priority)!;
+			expect(parser.removePriority(`- [ ] Task ${glyph}`)).toBe('- [ ] Task');
+		});
+
+		it('strips a priority glyph mid-line without a double space', () => {
+			expect(
+				parser.removePriority('- [ ] Task \u{23EB} \u{1F194} abc123'),
+			).toBe('- [ ] Task \u{1F194} abc123');
+		});
+
+		it('returns the line unchanged when no priority is present', () => {
+			const line = '- [ ] Task with no priority';
+			expect(parser.removePriority(line)).toBe(line);
+		});
+
+		it('collapses multiple spaces left behind before a mid-line marker removal', () => {
+			expect(parser.removePriority('- [ ] Task   \u{23EB}')).toBe('- [ ] Task');
+		});
+	});
+
 	describe('setPriority', () => {
 		it('appends a canonical priority glyph when absent', () => {
 			expect(parser.setPriority('- [ ] Task', 'high')).toBe(
