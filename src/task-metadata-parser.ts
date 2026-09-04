@@ -11,6 +11,8 @@
  * the plugin's "broad compatibility" philosophy. Write methods always
  * emit the canonical glyph.
  */
+import { LineSplicer } from './line-splicer';
+
 /** Obsidian Tasks priority levels that have an emoji signifier. */
 export type Priority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
 
@@ -46,10 +48,17 @@ export class TaskMetadataParser {
 	 */
 	removeDueDate(line: string): string {
 		const pattern = /\s?[\u{1F4C5}\u{1F4C6}\u{1F5D3}]\s\d{4}-\d{2}-\d{2}/u;
-		if (!pattern.test(line)) {
+		const match = pattern.exec(line);
+		if (!match) {
 			return line;
 		}
-		return line.replace(pattern, '').trimEnd();
+		const start = match.index;
+		const end = start + match[0].length;
+		// The pattern's leading \s? already captured exactly the one
+		// separator character apply inserted. LineSplicer removes only
+		// that matched range, leaving any other whitespace (the user's
+		// own trailing space, a hard line break) untouched.
+		return LineSplicer.spliceOut(line, start, end);
 	}
 
 	/**
@@ -82,10 +91,17 @@ export class TaskMetadataParser {
 	 */
 	removeScheduledDate(line: string): string {
 		const pattern = /\s?[\u{23F3}\u{231B}]\s\d{4}-\d{2}-\d{2}/u;
-		if (!pattern.test(line)) {
+		const match = pattern.exec(line);
+		if (!match) {
 			return line;
 		}
-		return line.replace(pattern, '').trimEnd();
+		const start = match.index;
+		const end = start + match[0].length;
+		// The pattern's leading \s? already captured exactly the one
+		// separator character apply inserted. LineSplicer removes only
+		// that matched range, leaving any other whitespace (the user's
+		// own trailing space, a hard line break) untouched.
+		return LineSplicer.spliceOut(line, start, end);
 	}
 
 	/**
@@ -213,6 +229,16 @@ export class TaskMetadataParser {
 		}
 		const glyph = TaskMetadataParser.GLYPH_BY_PRIORITY.get(current)!;
 		const pattern = new RegExp(`\\s?${glyph}`);
-		return line.replace(pattern, '').trimEnd();
+		const match = pattern.exec(line);
+		if (!match) {
+			return line;
+		}
+		const start = match.index;
+		const end = start + match[0].length;
+		// The pattern's leading \s? already captured exactly the one
+		// separator character apply inserted. LineSplicer removes only
+		// that matched range, leaving any other whitespace (the user's
+		// own trailing space, a hard line break) untouched.
+		return LineSplicer.spliceOut(line, start, end);
 	}
 }

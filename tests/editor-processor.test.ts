@@ -699,6 +699,71 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).not.toContain('\u{1F4C5}');
 		});
 
+		it('REGRESSION: preserves a trailing space left by a due-date deletion when an unrelated dangling dependency is cleaned up in the same pass', () => {
+			// This reproduces the reported bug end to end: the user
+			// backspaces a due date down to a single trailing space and
+			// parks the caret there. In the same edit, the child task the
+			// parent's dependency pointed at is gone too, so the ⛔ is now
+			// legitimately dangling and the cleanup pass rewrites the
+			// line for that unrelated reason. The rewrite must not reach
+			// past the ⛔ removal and eat the user's trailing space.
+			const arbiter = new LineWriteArbiter(
+				new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser()),
+			);
+			const lines = [
+				'- [ ] Parent \u26D4 abc123 \u{1F4C5} 2026-01-05',
+				'\t- [ ] Child \u{1F194} abc123',
+			];
+			const { processor, editor } = createTestProcessor(
+				lines, new Set(['abc123']), { arbiter },
+			);
+			processor.processAllLines(editor, 'test.md');
+
+			// The child task is deleted, severing the dependency, and the
+			// due date on the parent line is backspaced down to a single
+			// trailing space, with the caret parked at the end of it.
+			lines.splice(1, 1);
+			lines[0] = '- [ ] Parent \u26D4 abc123 ';
+			const editor2 = createMockEditor(lines, { line: 0, ch: lines[0]!.length });
+			processor.processAllLines(editor2, 'test.md');
+
+			expect(lines[0]).toBe('- [ ] Parent ');
+		});
+
+		it('REGRESSION: preserves a trailing space left by a priority deletion when inheritance re-applies the value in the same pass', () => {
+			// This reproduces the user's exact reported sequence: the
+			// child had inherited its parent's priority; the user
+			// backspaces that priority glyph away and parks the caret
+			// right after the trailing space that is left behind.
+			// MetadataInheritor proposes re-applying the parent's
+			// priority in the very same pass (since the parent's value
+			// has not changed), producing a double-space intermediate
+			// state; LineWriteArbiter then detects the priority was
+			// suppressed and corrects the proposal by removing it again.
+			// That correction must not reach past its own removal and
+			// eat the user's original trailing space.
+			const arbiter = new LineWriteArbiter(
+				new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser()),
+			);
+			const lines = [
+				'- [ ] Parent \u26D4 abc123 \u23EB',
+				'\t- [ ] Child \u{1F194} abc123 \u23EB',
+			];
+			const { processor, editor } = createTestProcessor(
+				lines, new Set(['abc123']), { arbiter },
+			);
+			processor.processAllLines(editor, 'test.md');
+
+			// The user backspaces the child's own priority glyph away,
+			// leaving a single trailing space, with the caret parked at
+			// the end of the line.
+			lines[1] = '\t- [ ] Child \u{1F194} abc123 ';
+			const editor2 = createMockEditor(lines, { line: 1, ch: lines[1]!.length });
+			processor.processAllLines(editor2, 'test.md');
+
+			expect(lines[1]).toBe('\t- [ ] Child \u{1F194} abc123 ');
+		});
+
 		it('REGRESSION: renaming a child 🆔 by hand still moves the parent ⛔ to the new id', () => {
 			const arbiter = new LineWriteArbiter(
 				new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser()),

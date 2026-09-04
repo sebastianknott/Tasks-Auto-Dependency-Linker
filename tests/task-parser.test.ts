@@ -279,6 +279,35 @@ describe('TaskParser', () => {
 			expect(result).toBe(line);
 			expect(Object.is(result, line)).toBe(true);
 		});
+
+		it('REGRESSION: preserves an unrelated trailing space left after the marker by an earlier, separate edit', () => {
+			// The trailing space here has nothing to do with the ⛔ marker
+			// being removed; it is content the user left behind after
+			// deleting a different marker earlier. Removing the last
+			// dependency must not reach past its own match and eat it.
+			const line = '- [ ] Task \u{1F194} abc123 \u26D4 def456 ';
+			const result = parser.removeDependencyFromLine(line, 'def456');
+			expect(result).toBe('- [ ] Task \u{1F194} abc123 ');
+		});
+
+		it('drops only one separator when removing the entire ⛔ marker, preserving the rest of a multi-space run', () => {
+			// The ⛔ marker's own regex has no leading \s?, so three
+			// spaces before it are entirely unmatched. Removing the whole
+			// marker must shed exactly one of those spaces as the
+			// marker's own separator, leaving two behind.
+			const line = '- [ ] Task   \u26D4 abc123';
+			expect(parser.removeDependencyFromLine(line, 'abc123')).toBe('- [ ] Task  ');
+		});
+
+		it('preserves the full preceding whitespace run untouched when the ⛔ marker survives with remaining dependencies', () => {
+			// The marker itself is not being removed here, only one id
+			// out of a list. The prefix keeps its own separator exactly
+			// as the user typed it, however many characters it was.
+			const line = '- [ ] Task   \u26D4 abc123,def456';
+			expect(parser.removeDependencyFromLine(line, 'abc123')).toBe(
+				'- [ ] Task   \u26D4 def456',
+			);
+		});
 	});
 
 	describe('removeIdFromLine', () => {
@@ -290,13 +319,43 @@ describe('TaskParser', () => {
 			['does not strip a trailing space when there is no ID marker to remove', '- [ ] Task ', '- [ ] Task '],
 			['preserves dependencies when removing the ID', '- [ ] Task 🆔 abc123 ⛔ def456,ghi789', '- [ ] Task ⛔ def456,ghi789'],
 			['preserves leading whitespace (indentation) after removal', '\t- [ ] Task 🆔 abc123', '\t- [ ] Task'],
-			['cleans up trailing whitespace after removal', '- [ ] Task 🆔 abc123  ', '- [ ] Task'],
+			// A trailing double space is a Markdown hard line break the
+			// user typed on purpose after the id; it is unrelated content
+			// that must survive the id's removal, not be silently trimmed.
+			['preserves an unrelated trailing double space (hard line break) after removal', '- [ ] Task 🆔 abc123  ', '- [ ] Task  '],
 			['returns an empty string unchanged', '', ''],
 			['removes the ID marker even without a leading space', '🆔 abc123', ''],
 			['removes an uppercase ID', '- [ ] Task 🆔 AbC123', '- [ ] Task'],
 			['removes a long ID with hyphens and underscores', '- [ ] Task 🆔 my-long_task-id', '- [ ] Task'],
 		])('%s', (_desc, input, expected) => {
 			expect(parser.removeIdFromLine(input)).toBe(expected);
+		});
+
+		it('REGRESSION: preserves an unrelated trailing space left after the marker by an earlier, separate edit', () => {
+			// The trailing space here has nothing to do with the 🆔 marker
+			// being removed; it is content the user left behind after
+			// deleting a different marker earlier. Removing the id must
+			// not reach past its own match and eat it.
+			const line = '- [ ] Task \u{1F194} abc123 \u26D4 def456 ';
+			const result = parser.removeIdFromLine(line);
+			expect(result).toBe('- [ ] Task \u26D4 def456 ');
+		});
+
+		it('does not consume a non-whitespace character directly preceding the marker when there is no separator', () => {
+			// The leading `\s?` in the pattern must only ever match an
+			// actual whitespace separator, never a character of the text
+			// that happens to sit right up against the glyph.
+			expect(parser.removeIdFromLine('X\u{1F194} abc123')).toBe('X');
+		});
+
+		it('consumes only the one separator its own match captured, not the whole preceding whitespace run', () => {
+			// Three spaces precede the marker; the pattern's leading \s?
+			// captures exactly one of them, leaving the other two (an
+			// in-progress Markdown hard line break, or simply the user's
+			// own trailing whitespace) untouched.
+			expect(parser.removeIdFromLine('- [ ] Task   \u{1F194} abc123')).toBe(
+				'- [ ] Task  ',
+			);
 		});
 	});
 });

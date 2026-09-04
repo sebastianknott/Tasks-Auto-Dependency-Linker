@@ -326,3 +326,66 @@ describe('LineSnapshotStore.computeBareText fragment glyph with no leading white
 		expect(store.computeBareText('Task\u23F3')).toBe('Task');
 	});
 });
+
+/**
+ * Round-trip invariant: for any line that does not already carry a marker of
+ * a given type, applying that marker and then removing it must restore the
+ * original line byte for byte, including any trailing whitespace the line
+ * already had. This is the central invariant behind the fix for the "a
+ * trailing space vanishes after a debounce lag" bug: every apply appends
+ * exactly one separator space plus its glyph, so removal must consume
+ * exactly that one separator character, never a whole trailing whitespace
+ * run. The corpus below exercises every whitespace shape the user is likely
+ * to leave behind: no trailing whitespace, a single trailing space, two
+ * trailing spaces (a Markdown hard line break), a trailing tab, and a line
+ * that already ends with a different marker type entirely.
+ */
+const ROUND_TRIP_BASE = '- [ ] Task';
+
+function roundTripCorpusFor(foreignSuffix: string): readonly string[] {
+	return [
+		ROUND_TRIP_BASE,
+		`${ROUND_TRIP_BASE} `,
+		`${ROUND_TRIP_BASE}  `,
+		`${ROUND_TRIP_BASE}\t`,
+		`${ROUND_TRIP_BASE}${foreignSuffix}`,
+	];
+}
+
+// A distinct, unrelated marker glyph to append at the end of a line before
+// applying the marker under test, proving that apply/remove interacts only
+// with its own marker and leaves a pre-existing foreign marker untouched.
+// The priority glyph is used as the foreign marker for every accessor
+// except PriorityAccessor itself, which instead uses a foreign id marker.
+function foreignSuffixFor(type: MarkerType): string {
+	return type === MarkerType.Priority ? ' \u{1F194} zzz999' : ' \u23EB';
+}
+
+const ROUND_TRIP_VALUES: Record<MarkerType, string> = {
+	[MarkerType.Id]: 'abc123',
+	[MarkerType.Due]: '2025-06-01',
+	[MarkerType.Scheduled]: '2025-06-02',
+	[MarkerType.Priority]: 'high',
+};
+
+describe('marker apply/remove round trip', () => {
+	it('remove(apply(line, value)) restores the original line exactly, for every single-value accessor', () => {
+		for (const accessor of registry.markers) {
+			const value = ROUND_TRIP_VALUES[accessor.type];
+			for (const line of roundTripCorpusFor(foreignSuffixFor(accessor.type))) {
+				const applied = accessor.apply(line, value);
+				const restored = accessor.remove(applied);
+				expect(restored).toBe(line);
+			}
+		}
+	});
+
+	it('remove(apply(line, depId), depId) restores the original line exactly, for DependencyAccessor', () => {
+		const depId = 'dep123';
+		for (const line of roundTripCorpusFor(' \u23EB')) {
+			const applied = dependencyAccessor.apply(line, depId);
+			const restored = dependencyAccessor.remove(applied, depId);
+			expect(restored).toBe(line);
+		}
+	});
+});

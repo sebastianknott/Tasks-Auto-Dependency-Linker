@@ -4,6 +4,7 @@
  * Exposes the {@link TaskParser} class which detects, inspects, and modifies
  * Obsidian Tasks lines (checkboxes with `- [ ]` or `* [ ]` syntax).
  */
+import { LineSplicer } from './line-splicer';
 
 /**
  * Configuration for indentation detection, derived from
@@ -151,23 +152,41 @@ export class TaskParser {
 			return line;
 		}
 		const remaining = deps.filter((id) => id !== depId);
-		// Strip the ⛔ marker using the match position, preserving any suffix
+		// The ⛔ marker's own regex has no leading \s?, so its separator is
+		// never part of the match and must be shed manually, by exactly one
+		// character, not a whole trimEnd() run.
 		const markerStart = match.index!;
 		const markerEnd = markerStart + match[0].length;
-		const prefix = line.substring(0, markerStart).trimEnd();
 		const suffix = line.substring(markerEnd);
 		if (remaining.length === 0) {
-			return (prefix + suffix).trimEnd();
+			const prefix = LineSplicer.dropSeparatorBefore(line.substring(0, markerStart));
+			// Only the one separator whitespace character in front of the
+			// marker is ours to clean up. The suffix is whatever the user
+			// left after the marker and must survive untouched, even a
+			// trailing space that has nothing to do with the dependency
+			// being removed here.
+			return prefix + suffix;
 		}
-		return `${prefix} ⛔ ${remaining.join(',')}${suffix}`;
+		// The ⛔ marker itself survives, only its id list changes. The prefix
+		// keeps its own separator verbatim, whatever it was, so it is used
+		// unchanged here rather than trimmed and re-added.
+		const prefix = line.substring(0, markerStart);
+		return `${prefix}⛔ ${remaining.join(',')}${suffix}`;
 	}
 
 	/** Removes the `🆔 <id>` marker from a line. Cleans up whitespace. */
 	removeIdFromLine(line: string): string {
 		const pattern = /\s?🆔\s[a-zA-Z0-9_-]+/;
-		if (!pattern.test(line)) {
+		const match = pattern.exec(line);
+		if (!match) {
 			return line;
 		}
-		return line.replace(pattern, '').trimEnd();
+		const start = match.index;
+		const end = start + match[0].length;
+		// The pattern's leading \s? already captured exactly the one
+		// separator character apply inserted. LineSplicer removes only
+		// that matched range, leaving any other whitespace (the user's
+		// own trailing space, a hard line break) untouched.
+		return LineSplicer.spliceOut(line, start, end);
 	}
 }
