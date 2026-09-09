@@ -87,12 +87,26 @@ Each field is **inherited until you override it**, evaluated independently per f
 - **Clearing the parent leaves the child alone.** Removing a field from the parent does not remove it from the child.
 - The **start date** (`🛫`) is intentionally **not** inherited.
 
+### Deleting a marker while you're editing
+
+Delete a `🆔`, `⛔`, `📅`, `⏳`, or priority marker on the line your cursor is currently on, and it stays deleted. The plugin recomputes markers on every keystroke, but it never silently restores something you just removed from the line you're actively editing.
+
+Move the cursor to a different line, and normal processing resumes there: a missing `🆔` gets minted again, an inherited date reapplies, and so on. The protection covers only the line under the cursor, not the rest of the file.
+
+### Editing an ID by hand
+
+Change a child's `🆔` value and the parent's `⛔` follows it. That happens per keystroke, so backspacing through `abc123` rewrites the parent's blocker at `abc12`, then `abc1`, and so on until you stop. Each intermediate value is a valid ID as far as the plugin can tell, and it has no way to know you are not finished yet.
+
+The alternative would be to hold the cascade until you move the cursor off the line. That was considered and dropped: rename an ID, then close Obsidian before touching anything else, and the parent would keep pointing at the old value on disk. Churning the undo history is the lesser problem.
+
+Delete the value entirely, leaving a bare `🆔` glyph, and the parent's `⛔` is held intact until you finish typing the new one.
+
 ### Rules
 
 - **Parent-child only.** Only direct parent-child relationships are tracked. Siblings are independent.
 - **List-scoped.** The plugin only manages dependencies between tasks in the same contiguous list. Lists separated by blank lines, headings, or non-list content are treated independently and never interfere with each other.
 - **Non-task lines are ignored.** Plain text, bullets without checkboxes, and headings are never modified. Non-task list items (plain bullets like `- item`) are part of the same list block but are not given dependency markers.
-- **Automatic cleanup.** Orphaned `🆔` markers (not referenced by any `⛔` in the entire vault) and stale `⛔` markers (pointing to tasks that are no longer children within the same list) are removed automatically. Cross-file and cross-list dependency references are always preserved.
+- **Automatic cleanup.** Orphaned `🆔` markers (not referenced by any `⛔` in the entire vault) and stale `⛔` markers (pointing to tasks that are no longer children within the same list) are removed automatically. Cross-file and cross-list dependency references are always preserved, including across file and folder renames. Deleting a file removes its IDs from the vault-wide index, so dependencies pointing into it get cleaned up too.
 - **Vault-wide unique IDs.** Generated IDs are 6-character lowercase alphanumeric strings, unique across your entire vault.
 - **Broad ID compatibility.** The plugin generates lowercase alphanumeric IDs, but correctly parses and preserves IDs created by the Tasks plugin that contain uppercase letters, hyphens, underscores, or have different lengths.
 

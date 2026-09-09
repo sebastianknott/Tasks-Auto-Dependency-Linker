@@ -69,7 +69,7 @@ export class IdEngine {
 	 * Retries if a collision occurs (astronomically unlikely with
 	 * 2.18 billion combinations).
 	 */
-	generateUniqueId(existingIds: Set<string>): string {
+	generateUniqueId(existingIds: ReadonlySet<string>): string {
 		let id = this.generateId();
 		while (existingIds.has(id)) {
 			id = this.generateId();
@@ -129,6 +129,28 @@ export abstract class MarkerCache {
 	 */
 	updateForFile(filePath: string, content: string): void {
 		this.fileEntries.set(filePath, this.extract(content));
+	}
+
+
+	/**
+	 * Drops all cached entries associated with the given path.
+	 *
+	 * Removes the entry for the exact path, plus any entry whose key
+	 * starts with `path + '/'`. The prefix rule covers folder deletion
+	 * and rename, where the path identifies a directory rather than a
+	 * single file; every file nested under that directory must also be
+	 * forgotten. A sibling path that merely shares a string prefix
+	 * without the separator, for example 'notes-archive.md' relative to
+	 * 'notes', is left untouched.
+	 */
+	pruneFile(path: string): void {
+		this.fileEntries.delete(path);
+		const prefix = `${path}/`;
+		for (const key of this.fileEntries.keys()) {
+			if (key.startsWith(prefix)) {
+				this.fileEntries.delete(key);
+			}
+		}
 	}
 
 	/** Returns a set containing the union of all per-file entries. */

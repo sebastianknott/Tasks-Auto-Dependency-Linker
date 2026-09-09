@@ -63,5 +63,6 @@ export default tseslint.config(
 		"stryker.config.mjs",
 		"vitest.config.ts",
 		"tests",
+		".stryker-tmp",
 	]),
 );

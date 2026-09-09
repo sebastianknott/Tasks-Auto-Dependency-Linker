@@ -31,9 +31,15 @@ export class CursorGuard implements LineEditor {
 		return this.editor.getLine(n);
 	}
 
-	setLine(n: number, text: string): void {
+	setLine(n: number, text: string): string {
 		this.dirty = true;
 		this.editor.setLine(n, text);
+		return text;
+	}
+
+	/** The line the caret sat in when this guard was constructed. */
+	get cursorLine(): number {
+		return this.head.line;
 	}
 
 	/**
@@ -44,6 +50,22 @@ export class CursorGuard implements LineEditor {
 		if (!this.dirty) {
 			return;
 		}
-		this.editor.setSelection(this.anchor, this.head);
+		this.editor.setSelection(this.clampToLine(this.anchor), this.clampToLine(this.head));
+	}
+
+
+	/**
+	 * A write may have shrunk the exact line the caret sat in. Replaying
+	 * a stale ch past the new line's end would hand the real editor an
+	 * out-of-range position; Obsidian recovers from that by snapping the
+	 * caret to the start of the next line instead of clamping it. Clamp
+	 * here so the caret always lands on the line it started on.
+	 */
+	private clampToLine(position: EditorPositionLike): EditorPositionLike {
+		if (position.line < 0 || position.line >= this.editor.lineCount()) {
+			return position;
+		}
+		const lineLength = this.editor.getLine(position.line).length;
+		return { line: position.line, ch: Math.min(position.ch, lineLength) };
 	}
 }

@@ -6,6 +6,7 @@ import { IdEngine } from '../src/id-engine';
 import { TaskMetadataParser } from '../src/task-metadata-parser';
 import { MetadataSyncCache } from '../src/metadata-sync-cache';
 import { MetadataInheritor } from '../src/metadata-inheritor';
+import { MarkerAccessorRegistry } from '../src/marker-accessor';
 
 /** Minimal Editor mock matching Obsidian's Editor interface surface we use. */
 function createMockEditor(lines: string[]) {
@@ -19,6 +20,37 @@ function createMockEditor(lines: string[]) {
 		}),
 		setLine: vi.fn((n: number, text: string) => {
 			lines[n] = text;
+			return text;
+		}),
+	};
+}
+
+/** Editor whose setLine never mutates its backing lines, mimicking
+ * LineWriteArbiter's indeterminate-cursor-line branch where a write is
+ * proposed but the arbiter refuses it outright. */
+function createRefusingEditor(lines: string[]) {
+	return {
+		lineCount: vi.fn(() => lines.length),
+		getLine: vi.fn((n: number) => lines[n]!),
+		setLine: vi.fn((n: number, _text: string) => lines[n]!),
+	};
+}
+
+/** Editor whose setLine accepts a proposed write but also applies an
+ * unrelated correction to it, mimicking LineWriteArbiter freezing an
+ * unrelated suppressed marker on the same line while still accepting the
+ * rest of the proposal (for example the new dependency). */
+function createCorrectingEditor(
+	lines: string[],
+	correct: (n: number, text: string) => string,
+) {
+	return {
+		lineCount: vi.fn(() => lines.length),
+		getLine: vi.fn((n: number) => lines[n]!),
+		setLine: vi.fn((n: number, text: string) => {
+			const corrected = correct(n, text);
+			lines[n] = corrected;
+			return corrected;
 		}),
 	};
 }
@@ -29,7 +61,8 @@ describe('IndentationHandler', () => {
 	const relAnalyzer = new RelationshipAnalyzer(parser);
 	const metadataParser = new TaskMetadataParser();
 	const syncCache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
-	const inheritor = new MetadataInheritor(metadataParser, syncCache);
+	const registry = new MarkerAccessorRegistry(parser, metadataParser);
+	const inheritor = new MetadataInheritor(registry, syncCache);
 
 	describe('removeStaleDeps', () => {
 		it.each<[string, string, Set<string>, string]>([
@@ -157,18 +190,19 @@ describe('IndentationHandler', () => {
 			expect(lines[1]).toBe('\tSome text');
 		});
 
-		it('does not modify a root-level task', () => {
+		it('does not modify a root-level task and returns null', () => {
 			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
 			const lines = ['- [ ] Root task'];
 			const editor = createMockEditor(lines);
 
 			handler.prepareForLinkPass(editor);
-			handler.processLine(editor, 0, new Set());
+			const result = handler.processLine(editor, 0, new Set());
 
 			expect(lines[0]).toBe('- [ ] Root task');
+			expect(result).toBeNull();
 		});
 
-		it('does not duplicate an existing dependency', () => {
+		it('does not duplicate an existing dependency and returns null (child ID was reused)', () => {
 			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
 			const lines = [
 				'- [ ] Parent \u26D4 abc123',
@@ -177,12 +211,29 @@ describe('IndentationHandler', () => {
 			const editor = createMockEditor(lines);
 
 			handler.prepareForLinkPass(editor);
-			handler.processLine(editor, 1, new Set(['abc123']));
+			const result = handler.processLine(editor, 1, new Set(['abc123']));
 
 			expect(lines[0]).toBe('- [ ] Parent \u26D4 abc123');
+			expect(result).toBeNull();
 		});
 
-		it('adds the new ID to existingIds set', () => {
+		it('returns the newly generated ID instead of mutating existingIds', () => {
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const lines = [
+				'- [ ] Parent',
+				'\t- [ ] Child',
+			];
+			const editor = createMockEditor(lines);
+			const existingIds = new Set<string>();
+
+			handler.prepareForLinkPass(editor);
+			const result = handler.processLine(editor, 1, existingIds);
+
+			const childId = lines[1]!.match(/🆔\s([a-z0-9]{6})/)![1]!;
+			expect(result).toBe(childId);
+		});
+
+		it('does not mutate the existingIds set given to it', () => {
 			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
 			const lines = [
 				'- [ ] Parent',
@@ -194,9 +245,7 @@ describe('IndentationHandler', () => {
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, existingIds);
 
-			expect(existingIds.size).toBe(1);
-			const childId = lines[1]!.match(/🆔\s([a-z0-9]{6})/)![1]!;
-			expect(existingIds.has(childId)).toBe(true);
+			expect(existingIds.size).toBe(0);
 		});
 
 		it('does not call setLine for a line beyond lineCount', () => {
@@ -386,7 +435,7 @@ describe('IndentationHandler', () => {
 				parser,
 				idEngine,
 				relAnalyzer,
-				new MetadataInheritor(metadataParser, cache),
+				new MetadataInheritor(registry, cache),
 			);
 		}
 
@@ -518,6 +567,122 @@ describe('IndentationHandler', () => {
 
 			expect(lines[1]).toContain('\u{23F3} 2025-08-08');
 			expect(lines[1]).not.toContain('2025-02-02');
+		});
+	});
+
+	describe('sync cache confirmation', () => {
+		it('does not record the sync in the cache when the write is refused', () => {
+			const cache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
+			const localInheritor = new MetadataInheritor(registry, cache);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, localInheritor);
+			const childLine = '\t- [ ] Child \u{1F194} abc123';
+			const lines = ['- [ ] Parent \u{1F4C5} 2025-01-01', childLine];
+			const editor = createRefusingEditor(lines);
+
+			handler.prepareForLinkPass(editor);
+			handler.processLine(editor, 1, new Set(['abc123']));
+
+			expect(lines[1]).toBe(childLine);
+			expect(cache.get('abc123')?.due ?? null).toBeNull();
+		});
+
+		it('records the sync in the cache when the write succeeds normally', () => {
+			const cache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
+			const localInheritor = new MetadataInheritor(registry, cache);
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, localInheritor);
+			const lines = [
+				'- [ ] Parent \u{1F4C5} 2025-01-01',
+				'\t- [ ] Child \u{1F194} abc123',
+			];
+			const editor = createMockEditor(lines);
+
+			handler.prepareForLinkPass(editor);
+			handler.processLine(editor, 1, new Set(['abc123']));
+
+			expect(lines[1]).toContain('2025-01-01');
+			expect(cache.get('abc123')?.due).toBe('2025-01-01');
+		});
+	});
+
+	describe('Finding B: atomic parent-child linkage', () => {
+		it('abandons a freshly minted id and writes nothing when the parent refuses the link', () => {
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const parentLine = '- [ ] Parent \u26D4 ,def456';
+			const childLine = '\t- [ ] Child';
+			const lines = [parentLine, childLine];
+			const editor = createRefusingEditor(lines);
+
+			handler.prepareForLinkPass(editor);
+			const result = handler.processLine(editor, 1, new Set());
+
+			expect(result).toBeNull();
+			expect(lines[1]).toBe(childLine);
+			expect(
+				editor.setLine.mock.calls.some(([n]: [number, string]) => n === 1),
+			).toBe(false);
+		});
+
+		it('stays a no-op across two consecutive passes while the parent stays indeterminate', () => {
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const parentLine = '- [ ] Parent \u26D4 ,def456';
+			const childLine = '\t- [ ] Child';
+			const lines = [parentLine, childLine];
+			const editor = createRefusingEditor(lines);
+
+			handler.prepareForLinkPass(editor);
+			handler.processLine(editor, 1, new Set());
+			const afterFirstPass = [...lines];
+
+			handler.prepareForLinkPass(editor);
+			handler.processLine(editor, 1, new Set());
+
+			expect(lines).toEqual(afterFirstPass);
+			expect(lines).toEqual([parentLine, childLine]);
+		});
+
+		it('CONTRAST: still runs metadata inheritance and writes the child when the child already had an id and the parent refuses', () => {
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const parentLine = '- [ ] Parent \u{1F4C5} 2025-01-01';
+			const childLine = '\t- [ ] Child \u{1F194} abc123';
+			const lines = [parentLine, childLine];
+			const editor = createRefusingEditor(lines);
+
+			handler.prepareForLinkPass(editor);
+			const result = handler.processLine(editor, 1, new Set(['abc123']));
+
+			// No id was minted (the child already had one), so the atomic
+			// link check does not apply and today's behaviour is preserved:
+			// inheritance still runs and the child is still written even
+			// though the parent's own write was refused.
+			expect(result).toBeNull();
+			const childWriteCall = editor.setLine.mock.calls.find(
+				([n]: [number, string]) => n === 1,
+			);
+			expect(childWriteCall).toBeDefined();
+			expect(childWriteCall![1]).toContain('\u{1F4C5} 2025-01-01');
+		});
+
+		it('DISCRIMINATING: does not bail when the parent write lands the dependency but also carries an unrelated correction', () => {
+			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const parentLine = '- [ ] Parent \u{1F4C5} 2025-01-01';
+			const childLine = '\t- [ ] Child';
+			const lines = [parentLine, childLine];
+			// Simulates an arbiter that accepts the new dependency but also
+			// freezes an unrelated suppressed marker back to a different
+			// value on the same write, so the written parent line differs
+			// from the proposed line by more than just the dependency.
+			const editor = createCorrectingEditor(lines, (n, text) =>
+				n === 0 ? text.replace('2025-01-01', '2099-12-31') : text,
+			);
+
+			handler.prepareForLinkPass(editor);
+			const result = handler.processLine(editor, 1, new Set());
+
+			expect(result).not.toBeNull();
+			const mintedId = result!;
+			expect(lines[0]).toContain('2099-12-31');
+			expect(lines[0]).toContain(`\u26D4 ${mintedId}`);
+			expect(lines[1]).toContain(`\u{1F194} ${mintedId}`);
 		});
 	});
 });

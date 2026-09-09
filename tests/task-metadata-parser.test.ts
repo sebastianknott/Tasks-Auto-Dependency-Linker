@@ -158,6 +158,185 @@ describe('TaskMetadataParser', () => {
 		});
 	});
 
+	describe('removeDueDate', () => {
+		it('strips a canonical due marker mid-line without a double space', () => {
+			expect(
+				parser.removeDueDate('- [ ] Task \u{1F4C5} 2025-01-01 \u{1F194} abc123'),
+			).toBe('- [ ] Task \u{1F194} abc123');
+		});
+
+		it('strips a due marker at the end of the line', () => {
+			expect(parser.removeDueDate('- [ ] Task \u{1F4C5} 2025-01-01')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('tolerates the tear-off calendar glyph', () => {
+			expect(parser.removeDueDate('- [ ] Task \u{1F4C6} 2025-02-20')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('tolerates the spiral calendar glyph', () => {
+			expect(parser.removeDueDate('- [ ] Task \u{1F5D3} 2025-03-25')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('returns the line unchanged when no due date is present', () => {
+			const line = '- [ ] Task with no date';
+			expect(parser.removeDueDate(line)).toBe(line);
+		});
+
+		it('does not strip a trailing space when there is no due marker to remove', () => {
+			expect(parser.removeDueDate('- [ ] Task ')).toBe('- [ ] Task ');
+		});
+
+		it('strips a due marker with nothing at all before it on the line', () => {
+			expect(parser.removeDueDate('\u{1F4C5} 2025-01-01')).toBe('');
+		});
+
+		it('consumes only the one separator its own match captured, not the whole preceding whitespace run', () => {
+			// Three spaces precede the marker. The pattern's leading \s?
+			// captures exactly one of them as the marker's own separator;
+			// the other two are unrelated whitespace the user typed (e.g.
+			// a Markdown hard line break in progress) and must survive.
+			// This was previously asserted to collapse to zero spaces,
+			// which encoded the bug this fix corrects: a full trimEnd()
+			// consumed whitespace far beyond the single separator the
+			// marker's own regex matched.
+			expect(parser.removeDueDate('- [ ] Task   \u{1F4C5} 2025-01-01')).toBe(
+				'- [ ] Task  ',
+			);
+		});
+
+		it('REGRESSION: preserves an unrelated trailing space left after the marker by an earlier, separate edit', () => {
+			// The trailing space is content the user left behind for a
+			// reason unrelated to the due date; removal must not reach
+			// past its own match and eat it.
+			expect(
+				parser.removeDueDate('- [ ] Task \u{1F4C5} 2025-01-01 \u23EB '),
+			).toBe('- [ ] Task \u23EB ');
+		});
+
+		it('does not consume a non-whitespace character directly preceding the marker when there is no separator', () => {
+			// The leading `\s?` in the pattern must only ever match an
+			// actual whitespace separator, never a character of the text
+			// that happens to sit right up against the glyph.
+			expect(parser.removeDueDate('X\u{1F4C5} 2025-01-01')).toBe('X');
+		});
+	});
+
+	describe('removeScheduledDate', () => {
+		it('strips a canonical scheduled marker mid-line without a double space', () => {
+			expect(
+				parser.removeScheduledDate('- [ ] Task \u{23F3} 2025-04-10 \u{1F194} abc123'),
+			).toBe('- [ ] Task \u{1F194} abc123');
+		});
+
+		it('strips a scheduled marker at the end of the line', () => {
+			expect(parser.removeScheduledDate('- [ ] Task \u{23F3} 2025-04-10')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('tolerates the hourglass-done glyph', () => {
+			expect(parser.removeScheduledDate('- [ ] Task \u{231B} 2025-05-11')).toBe(
+				'- [ ] Task',
+			);
+		});
+
+		it('returns the line unchanged when no scheduled date is present', () => {
+			const line = '- [ ] Task with no date';
+			expect(parser.removeScheduledDate(line)).toBe(line);
+		});
+
+		it('does not strip a trailing space when there is no scheduled marker to remove', () => {
+			expect(parser.removeScheduledDate('- [ ] Task ')).toBe('- [ ] Task ');
+		});
+
+		it('strips a scheduled marker with nothing at all before it on the line', () => {
+			expect(parser.removeScheduledDate('\u{23F3} 2025-01-01')).toBe('');
+		});
+
+		it('consumes only the one separator its own match captured, not the whole preceding whitespace run', () => {
+			// Three spaces precede the marker. The pattern's leading \s?
+			// captures exactly one of them as the marker's own separator;
+			// the other two are unrelated whitespace the user typed (e.g.
+			// a Markdown hard line break in progress) and must survive.
+			// This was previously asserted to collapse to zero spaces,
+			// which encoded the bug this fix corrects: a full trimEnd()
+			// consumed whitespace far beyond the single separator the
+			// marker's own regex matched.
+			expect(parser.removeScheduledDate('- [ ] Task   \u{23F3} 2025-01-01')).toBe(
+				'- [ ] Task  ',
+			);
+		});
+
+		it('REGRESSION: preserves an unrelated trailing space left after the marker by an earlier, separate edit', () => {
+			// The trailing space is content the user left behind for a
+			// reason unrelated to the scheduled date; removal must not
+			// reach past its own match and eat it.
+			expect(
+				parser.removeScheduledDate('- [ ] Task \u{23F3} 2025-04-10 \u23EB '),
+			).toBe('- [ ] Task \u23EB ');
+		});
+
+		it('does not consume a non-whitespace character directly preceding the marker when there is no separator', () => {
+			// The leading `\s?` in the pattern must only ever match an
+			// actual whitespace separator, never a character of the text
+			// that happens to sit right up against the glyph.
+			expect(parser.removeScheduledDate('X\u{23F3} 2025-04-10')).toBe('X');
+		});
+	});
+
+	describe('removePriority', () => {
+		it.each<[string, Priority]>([
+			['strips the highest priority glyph', 'highest'],
+			['strips the high priority glyph', 'high'],
+			['strips the medium priority glyph', 'medium'],
+			['strips the low priority glyph', 'low'],
+			['strips the lowest priority glyph', 'lowest'],
+		])('%s', (_desc, priority) => {
+			const glyph = TaskMetadataParser.GLYPH_BY_PRIORITY.get(priority)!;
+			expect(parser.removePriority(`- [ ] Task ${glyph}`)).toBe('- [ ] Task');
+		});
+
+		it('strips a priority glyph mid-line without a double space', () => {
+			expect(
+				parser.removePriority('- [ ] Task \u{23EB} \u{1F194} abc123'),
+			).toBe('- [ ] Task \u{1F194} abc123');
+		});
+
+		it('returns the line unchanged when no priority is present', () => {
+			const line = '- [ ] Task with no priority';
+			expect(parser.removePriority(line)).toBe(line);
+		});
+
+		it('consumes only the one separator its own match captured, not the whole preceding whitespace run', () => {
+			// Three spaces precede the marker. The pattern's leading \s?
+			// captures exactly one of them as the marker's own separator;
+			// the other two are unrelated whitespace the user typed (e.g.
+			// a Markdown hard line break in progress) and must survive.
+			// This was previously asserted to collapse to zero spaces,
+			// which encoded the bug this fix corrects: a full trimEnd()
+			// consumed whitespace far beyond the single separator the
+			// marker's own regex matched. This is the exact class of bug
+			// the user reported: a priority glyph's own removal eating a
+			// trailing space it never touched.
+			expect(parser.removePriority('- [ ] Task   \u{23EB}')).toBe('- [ ] Task  ');
+		});
+
+		it('REGRESSION: preserves an unrelated trailing space left after the marker by an earlier, separate edit', () => {
+			// The trailing space is content the user left behind for a
+			// reason unrelated to the priority glyph; removal must not
+			// reach past its own match and eat it.
+			expect(
+				parser.removePriority('- [ ] Task \u23EB \u{1F194} abc123 '),
+			).toBe('- [ ] Task \u{1F194} abc123 ');
+		});
+	});
+
 	describe('setPriority', () => {
 		it('appends a canonical priority glyph when absent', () => {
 			expect(parser.setPriority('- [ ] Task', 'high')).toBe(
@@ -175,6 +354,33 @@ describe('TaskMetadataParser', () => {
 			expect(
 				parser.setPriority('- [ ] Task \u{1F53D} \u{1F194} abc123', 'highest'),
 			).toBe('- [ ] Task \u{1F53A} \u{1F194} abc123');
+		});
+	});
+
+	describe('priority apply/remove round trip (user-reported regression)', () => {
+		// This is the exact case the user reported still broken after an
+		// earlier partial fix: backspacing a priority glyph away and
+		// stopping right after typing a trailing space. setPriority is
+		// what LineWriteArbiter calls to re-apply an inherited value, and
+		// removePriority is what it calls a moment later when it detects
+		// the child suppressed that value. The user's trailing space must
+		// survive that whole apply-then-suppress cycle.
+		it('setPriority then removePriority restores a line that had a single trailing space', () => {
+			const line = '- [ ] Task ';
+			const withPriority = parser.setPriority(line, 'high');
+			expect(parser.removePriority(withPriority)).toBe(line);
+		});
+
+		it('setPriority then removePriority restores a line that had a Markdown hard line break (two trailing spaces)', () => {
+			const line = '- [ ] Task  ';
+			const withPriority = parser.setPriority(line, 'high');
+			expect(parser.removePriority(withPriority)).toBe(line);
+		});
+
+		it('setPriority then removePriority restores a line with no trailing whitespace', () => {
+			const line = '- [ ] Task';
+			const withPriority = parser.setPriority(line, 'high');
+			expect(parser.removePriority(withPriority)).toBe(line);
 		});
 	});
 });

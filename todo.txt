@@ -1,3 +1,3 @@
 (D) Prepare submission PR to obsidian-releases community-plugins.json +release @deploy
-(C) Eliminate existingIds mutation side effect in processLine by returning the newly generated ID instead of mutating the caller Set +refactor @lchc
-Can't add id (for other purposes) by Hand +bug @dev
+(B) Cache blind spot: 'ID' typed into another open but unsaved file is invisible because vault modify fires on save only +bug @dev
+(B) Stale suppression: LineWriteArbiter keeps suppressedTypes when a file's whole content is replaced externally (sync, git checkout, vault overwrite) while the cursor stays on the same line index, silently blocking marker writes on unrelated new content. beginPass only resets on filePath or cursorLine change +bug @dev

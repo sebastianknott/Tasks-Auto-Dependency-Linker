@@ -1,4 +1,5 @@
-import { Plugin, MarkdownView, TFile } from 'obsidian';
+import { Plugin, MarkdownView } from 'obsidian';
+import type { Editor } from 'obsidian';
 import { TaskParser } from './task-parser';
 import type { IndentConfig } from './task-parser';
 import { IdEngine, IdCache, DepCache } from './id-engine';
@@ -8,21 +9,30 @@ import { MetadataSyncCache } from './metadata-sync-cache';
 import { MetadataInheritor } from './metadata-inheritor';
 import { IndentationHandler } from './indentation-handler';
 import { EditorProcessor } from './editor-processor';
+import { CacheCoordinator } from './cache-coordinator';
+import { ObsidianEditorAdapter } from './obsidian-editor-adapter';
+import { LineWriteArbiter } from './line-write-arbiter';
+import { MarkerAccessorRegistry } from './marker-accessor';
 import { Debounce } from './utils';
+import { CursorLineWatcher } from './cursor-line-watcher';
+import { PluginTriggers } from './plugin-triggers';
 
 /**
  * Tasks Auto-Dependency Linker plugin for Obsidian.
  *
  * Thin shell that wires Obsidian events to the extracted, testable classes.
  * All logic lives in TaskParser, IdEngine, IdCache, IndentationHandler,
- * EditorProcessor, and Debounce.
+ * EditorProcessor, CacheCoordinator, and Debounce.
  */
 export default class TasksAutoDependencyLinker extends Plugin {
 	private debounce!: Debounce;
 	private idCache!: IdCache;
 	private depCache!: DepCache;
 	private syncCache!: MetadataSyncCache;
+	private coordinator!: CacheCoordinator;
 	private processor!: EditorProcessor;
+	private arbiter!: LineWriteArbiter;
+	private watcher!: CursorLineWatcher;
 
 	/** Obsidian Tasks plugin ID in the community plugins registry. */
 	private static readonly TASKS_PLUGIN_ID = 'obsidian-tasks-plugin';
@@ -37,10 +47,21 @@ export default class TasksAutoDependencyLinker extends Plugin {
 			return;
 		}
 
+		this.buildComponents();
+		new PluginTriggers(
+			this, this.coordinator, this.arbiter, this.debounce, this.watcher,
+		).register();
+	}
+
+	onunload(): void {
+		this.debounce?.cancel();
+	}
+
+	/** Constructs the parser/cache/processor graph used by this instance. */
+	private buildComponents(): void {
 		const vault = this.app.vault as unknown as {
 			getConfig(key: string): unknown;
 		};
-
 		const indentConfig: IndentConfig = {
 			useTab: (vault.getConfig('useTab') as boolean | undefined) ?? true,
 			tabSize: (vault.getConfig('tabSize') as number | undefined) ?? 4,
@@ -50,57 +71,24 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		const idEngine = new IdEngine();
 		const relAnalyzer = new RelationshipAnalyzer(parser);
 		const metadataParser = new TaskMetadataParser();
+		const registry = new MarkerAccessorRegistry(parser, metadataParser);
 		this.syncCache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
-		const inheritor = new MetadataInheritor(metadataParser, this.syncCache);
+		const inheritor = new MetadataInheritor(registry, this.syncCache);
 		const handler = new IndentationHandler(
 			parser, idEngine, relAnalyzer, inheritor,
 		);
 
 		this.idCache = new IdCache(idEngine);
 		this.depCache = new DepCache(idEngine);
+		this.coordinator = new CacheCoordinator(
+			this.idCache, this.depCache, this.syncCache, this.app.vault,
+		);
+		this.arbiter = new LineWriteArbiter(registry);
 		this.processor = new EditorProcessor(
-			handler, parser, relAnalyzer, this.idCache, this.depCache,
+			handler, parser, relAnalyzer, this.idCache, this.depCache, this.arbiter,
 		);
 		this.debounce = new Debounce(() => this.processActiveEditor());
-
-		this.app.workspace.onLayoutReady(() => void this.buildIdCache());
-
-		this.registerEvent(
-			this.app.vault.on('modify', (file: TFile) => {
-				if (file.extension === 'md') {
-					void this.updateCacheForFile(file);
-				}
-			}),
-		);
-
-		this.registerEvent(
-			this.app.workspace.on('editor-change', () => this.debounce.call()),
-		);
-	}
-
-	onunload(): void {
-		this.debounce?.cancel();
-	}
-
-	private async buildIdCache(): Promise<void> {
-		const files = this.app.vault.getMarkdownFiles();
-		const entries: Array<{ path: string; content: string }> = [];
-		for (const file of files) {
-			entries.push({
-				path: file.path,
-				content: await this.app.vault.cachedRead(file),
-			});
-		}
-		this.idCache.buildFromFiles(entries);
-		this.depCache.buildFromFiles(entries);
-		this.syncCache.buildFromFiles(entries);
-	}
-
-	private async updateCacheForFile(file: TFile): Promise<void> {
-		const content = await this.app.vault.cachedRead(file);
-		this.idCache.updateForFile(file.path, content);
-		this.depCache.updateForFile(file.path, content);
-		this.syncCache.updateForFile(file.path, content);
+		this.watcher = new CursorLineWatcher(() => this.debounce.call());
 	}
 
 	private processActiveEditor(): void {
@@ -108,6 +96,21 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		if (!view) {
 			return;
 		}
-		this.processor.processAllLines(view.editor, view.file?.path ?? '');
+		const path = view.file?.path ?? '';
+		this.processor.processAllLines(new ObsidianEditorAdapter(view.editor), path);
+		this.refreshLiveCache(path, view.editor);
+	}
+
+	/**
+	 * Keeps the ID and dependency caches fresh from the live editor buffer
+	 * between debounce passes, so cross-reference cleanup does not act on
+	 * stale data while waiting for autosave. Skipped for a file-less
+	 * buffer, so an empty path never pollutes the caches.
+	 */
+	private refreshLiveCache(path: string, editor: Editor): void {
+		if (!path) {
+			return;
+		}
+		this.coordinator.updateFromLiveContent(path, editor.getValue());
 	}
 }

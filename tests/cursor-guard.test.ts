@@ -11,6 +11,7 @@ function createMockEditor(lines: string[], anchor: EditorPositionLike, head: Edi
 		getLine: vi.fn((n: number) => lines[n]!),
 		setLine: vi.fn((n: number, text: string) => {
 			lines[n] = text;
+			return text;
 		}),
 		getCursor: vi.fn((which?: 'anchor' | 'head') => (which === 'head' ? head : anchor)),
 		setSelection: vi.fn(),
@@ -74,5 +75,74 @@ describe('CursorGuard', () => {
 		guard.restore();
 
 		expect(editor.setSelection).toHaveBeenCalledWith(captured, captured);
+	});
+
+	it('clamps the restored ch to the new line length when a write shrank the cursor line', () => {
+		const position = { line: 0, ch: 11 }; // end of 'hello world'
+		const editor = createMockEditor(['hello world'], position, position);
+		const guard = new CursorGuard(editor);
+
+		guard.setLine(0, 'hi');
+		guard.restore();
+
+		expect(editor.setSelection).toHaveBeenCalledWith({ line: 0, ch: 2 }, { line: 0, ch: 2 });
+	});
+
+	it('treats a captured line equal to lineCount as out of range', () => {
+		const position = { line: 2, ch: 3 }; // lineCount is 2, so line 2 does not exist
+		const editor = createMockEditor(['a', 'b'], position, position);
+		const guard = new CursorGuard(editor);
+
+		guard.setLine(0, 'changed');
+
+		expect(() => guard.restore()).not.toThrow();
+		expect(editor.setSelection).toHaveBeenCalledWith(position, position);
+	});
+
+	it('leaves an out-of-range captured line untouched instead of throwing', () => {
+		const position = { line: -1, ch: 5 };
+		const editor = createMockEditor(['a'], position, position);
+		const guard = new CursorGuard(editor);
+
+		guard.setLine(0, 'b');
+
+		expect(() => guard.restore()).not.toThrow();
+		expect(editor.setSelection).toHaveBeenCalledWith(position, position);
+	});
+
+	it('does not touch a ch that still fits within the new line length', () => {
+		const anchor = { line: 1, ch: 3 };
+		const head = { line: 1, ch: 5 };
+		const editor = createMockEditor(['x', 'y'], anchor, head);
+		const guard = new CursorGuard(editor);
+
+		guard.setLine(1, 'y changed, still long enough');
+		guard.restore();
+
+		expect(editor.setSelection).toHaveBeenCalledWith({ line: 1, ch: 3 }, { line: 1, ch: 5 });
+	});
+
+	it('returns the text it was handed from setLine', () => {
+		const editor = createMockEditor(['a', 'b'], { line: 0, ch: 0 }, { line: 0, ch: 0 });
+		const guard = new CursorGuard(editor);
+
+		expect(guard.setLine(0, 'changed')).toBe('changed');
+	});
+
+	it('exposes cursorLine from the head captured at construction', () => {
+		const head = { line: 3, ch: 2 };
+		const editor = createMockEditor(['a', 'b', 'c', 'd'], { line: 3, ch: 0 }, head);
+		const guard = new CursorGuard(editor);
+
+		expect(guard.cursorLine).toBe(3);
+	});
+
+	it('cursorLine does not change when the underlying cursor moves later', () => {
+		const editor = createMockEditor(['a', 'b'], { line: 0, ch: 0 }, { line: 0, ch: 0 });
+		const guard = new CursorGuard(editor);
+
+		editor.getCursor = vi.fn(() => ({ line: 1, ch: 0 }));
+
+		expect(guard.cursorLine).toBe(0);
 	});
 });

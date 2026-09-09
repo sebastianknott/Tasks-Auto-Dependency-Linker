@@ -161,6 +161,55 @@ describe('MarkerCache', () => {
 			expect(cache.getAllExcluding(excludePath)).toEqual(expected);
 		});
 	});
+
+	describe('pruneFile', () => {
+		it('drops the exact path', () => {
+			const cache = createCache();
+			cache.buildFromFiles([
+				{ path: 'a.md', content: 'aaa' },
+				{ path: 'b.md', content: 'bbb' },
+			]);
+			cache.pruneFile('a.md');
+			expect(cache.getAll()).toEqual(new Set(['bbb']));
+		});
+
+		it('drops descendants under path + "/"', () => {
+			const cache = createCache();
+			cache.buildFromFiles([
+				{ path: 'notes/a.md', content: 'aaa' },
+				{ path: 'notes/sub/b.md', content: 'bbb' },
+				{ path: 'other.md', content: 'ccc' },
+			]);
+			cache.pruneFile('notes');
+			expect(cache.getAll()).toEqual(new Set(['ccc']));
+		});
+
+		it('leaves a sibling path with the same prefix but no separator alone', () => {
+			const cache = createCache();
+			cache.buildFromFiles([
+				{ path: 'notes-archive.md', content: 'aaa' },
+			]);
+			cache.pruneFile('notes');
+			expect(cache.getAll()).toEqual(new Set(['aaa']));
+		});
+
+		it('is a no-op when the path is not present', () => {
+			const cache = createCache();
+			cache.buildFromFiles([{ path: 'a.md', content: 'aaa' }]);
+			cache.pruneFile('nonexistent.md');
+			expect(cache.getAll()).toEqual(new Set(['aaa']));
+		});
+
+		it('does not affect entries from unrelated files', () => {
+			const cache = createCache();
+			cache.buildFromFiles([
+				{ path: 'notes/a.md', content: 'aaa' },
+				{ path: 'b.md', content: 'bbb' },
+			]);
+			cache.pruneFile('notes');
+			expect(cache.getAll().has('bbb')).toBe(true);
+		});
+	});
 });
 
 describe('IdEngine', () => {
