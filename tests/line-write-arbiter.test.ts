@@ -96,49 +96,25 @@ describe('LineWriteArbiter: cold arrival (the actual bug fix)', () => {
 		expect(arbiter.getSuppressedDepIds().has('abc123')).toBe(true);
 	});
 
-	it('collapses whitespace left on both sides of a bare id marker, not just one side', () => {
+	const bareMarkerWhitespaceCases = [
+		{ name: 'collapses whitespace left on both sides of a bare id marker, not just one side', glyph: '\u{1F194}', value: 'abc123', markerType: MarkerType.Id },
+		{ name: 'collapses whitespace left on both sides of a bare due marker, not just one side', glyph: '\u{1F4C5}', value: '2025-11-15', markerType: MarkerType.Due },
+		{ name: 'collapses whitespace left on both sides of a bare scheduled marker, not just one side', glyph: '\u23F3', value: '2025-11-15', markerType: MarkerType.Scheduled },
+	];
+
+	it.each(bareMarkerWhitespaceCases)('$name', ({ glyph, value, markerType }) => {
 		const arbiter = createArbiter();
-		const lines = ['Task \u{1F194} abc123 more text'];
+		const lines = [`Task ${glyph} ${value} more text`];
 		let target = createLineEditor(lines);
 
 		arbiter.beginPass(target, 0, 'file.md');
 		arbiter.endPass();
 
-		lines[0] = 'Task \u{1F194}  more text';
+		lines[0] = `Task ${glyph}  more text`;
 		target = createLineEditor(lines);
 		arbiter.beginPass(target, 0, 'file.md');
 
-		expect(arbiter.isSuppressed(0, MarkerType.Id)).toBe(true);
-	});
-
-	it('collapses whitespace left on both sides of a bare due marker, not just one side', () => {
-		const arbiter = createArbiter();
-		const lines = ['Task \u{1F4C5} 2025-11-15 more text'];
-		let target = createLineEditor(lines);
-
-		arbiter.beginPass(target, 0, 'file.md');
-		arbiter.endPass();
-
-		lines[0] = 'Task \u{1F4C5}  more text';
-		target = createLineEditor(lines);
-		arbiter.beginPass(target, 0, 'file.md');
-
-		expect(arbiter.isSuppressed(0, MarkerType.Due)).toBe(true);
-	});
-
-	it('collapses whitespace left on both sides of a bare scheduled marker, not just one side', () => {
-		const arbiter = createArbiter();
-		const lines = ['Task \u23F3 2025-11-15 more text'];
-		let target = createLineEditor(lines);
-
-		arbiter.beginPass(target, 0, 'file.md');
-		arbiter.endPass();
-
-		lines[0] = 'Task \u23F3  more text';
-		target = createLineEditor(lines);
-		arbiter.beginPass(target, 0, 'file.md');
-
-		expect(arbiter.isSuppressed(0, MarkerType.Scheduled)).toBe(true);
+		expect(arbiter.isSuppressed(0, markerType)).toBe(true);
 	});
 
 	it('does not eat a trailing space typed elsewhere on the line while a marker stays suppressed', () => {
@@ -871,31 +847,22 @@ describe('LineWriteArbiter: scheduled and priority markers, not just due date', 
 });
 
 describe('LineWriteArbiter: indeterminate (mid-edit) cursor line', () => {
-	it('reports the cursor line as indeterminate when a bare \u{1F194} glyph is left mid-deletion', () => {
+	const indeterminateLineCases = [
+		{ name: 'reports the cursor line as indeterminate when a bare \u{1F194} glyph is left mid-deletion', line: '- [ ] Child \u{1F194}', expected: true },
+		{ name: 'does not report indeterminate for a well-formed id', line: '- [ ] Child \u{1F194} abc', expected: false },
+		{ name: 'does not report indeterminate when no marker glyph is present at all', line: '- [ ] Child', expected: false },
+		{ name: 'reports indeterminate for a dependency list missing its first id (leading comma)', line: '- [ ] Parent \u26D4 ,def', expected: true },
+		{ name: 'reports indeterminate for a dependency list missing its last id (trailing comma)', line: '- [ ] Parent \u26D4 abc,', expected: true },
+		{ name: 'reports indeterminate for a partially typed due date', line: '- [ ] Task \u{1F4C5} 2025-0', expected: true },
+	];
+
+	it.each(indeterminateLineCases)('$name', ({ line, expected }) => {
 		const arbiter = createArbiter();
-		const lines = ['- [ ] Child \u{1F194}'];
+		const lines = [line];
 		const target = createLineEditor(lines);
 		arbiter.beginPass(target, 0, 'file.md');
 
-		expect(arbiter.isIndeterminate(0)).toBe(true);
-	});
-
-	it('does not report indeterminate for a well-formed id', () => {
-		const arbiter = createArbiter();
-		const lines = ['- [ ] Child \u{1F194} abc'];
-		const target = createLineEditor(lines);
-		arbiter.beginPass(target, 0, 'file.md');
-
-		expect(arbiter.isIndeterminate(0)).toBe(false);
-	});
-
-	it('does not report indeterminate when no marker glyph is present at all', () => {
-		const arbiter = createArbiter();
-		const lines = ['- [ ] Child'];
-		const target = createLineEditor(lines);
-		arbiter.beginPass(target, 0, 'file.md');
-
-		expect(arbiter.isIndeterminate(0)).toBe(false);
+		expect(arbiter.isIndeterminate(0)).toBe(expected);
 	});
 
 	it('refuses to write anything to an indeterminate cursor line, even an unrelated proposal', () => {
@@ -910,24 +877,6 @@ describe('LineWriteArbiter: indeterminate (mid-edit) cursor line', () => {
 		expect(target.setLine).not.toHaveBeenCalled();
 	});
 
-	it('reports indeterminate for a dependency list missing its first id (leading comma)', () => {
-		const arbiter = createArbiter();
-		const lines = ['- [ ] Parent \u26D4 ,def'];
-		const target = createLineEditor(lines);
-		arbiter.beginPass(target, 0, 'file.md');
-
-		expect(arbiter.isIndeterminate(0)).toBe(true);
-	});
-
-	it('reports indeterminate for a dependency list missing its last id (trailing comma)', () => {
-		const arbiter = createArbiter();
-		const lines = ['- [ ] Parent \u26D4 abc,'];
-		const target = createLineEditor(lines);
-		arbiter.beginPass(target, 0, 'file.md');
-
-		expect(arbiter.isIndeterminate(0)).toBe(true);
-	});
-
 	it('refuses a duplicate-marker write attempt on a mid-edit dependency list', () => {
 		const arbiter = createArbiter();
 		const lines = ['- [ ] Parent \u26D4 abc,'];
@@ -938,15 +887,6 @@ describe('LineWriteArbiter: indeterminate (mid-edit) cursor line', () => {
 
 		expect(result).toBe('- [ ] Parent \u26D4 abc,');
 		expect(target.setLine).not.toHaveBeenCalled();
-	});
-
-	it('reports indeterminate for a partially typed due date', () => {
-		const arbiter = createArbiter();
-		const lines = ['- [ ] Task \u{1F4C5} 2025-0'];
-		const target = createLineEditor(lines);
-		arbiter.beginPass(target, 0, 'file.md');
-
-		expect(arbiter.isIndeterminate(0)).toBe(true);
 	});
 
 	it('does not report indeterminate for lines other than the cursor line, even with the same fragment', () => {
