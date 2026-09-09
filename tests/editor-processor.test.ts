@@ -234,7 +234,10 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
 		});
 
-		it('keeps 🆔 when another line still has ⛔ referencing it', () => {
+		// This was two tests with identical setup and identical assertions, one
+		// titled from the child's side and one from the parent's side. Neither
+		// could kill a mutant the other missed, so they are one test now.
+		it('keeps a matching 🆔 and ⛔ pair intact on both the child and the parent', () => {
 			const { processor, editor, lines } = createTestProcessor([
 				'- [ ] Parent ⛔ abc123',
 				'\t- [ ] Child 🆔 abc123',
@@ -242,8 +245,8 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, '');
 
-			expect(lines[1]).toContain('🆔 abc123');
 			expect(lines[0]).toContain('⛔ abc123');
+			expect(lines[1]).toContain('🆔 abc123');
 		});
 
 		it('removes stale ⛔ but keeps valid ⛔ on the same parent', () => {
@@ -272,18 +275,6 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).not.toContain('⛔ child1');
 			expect(lines[1]).toContain('⛔ child1');
 			expect(lines[2]).toContain('🆔 child1');
-		});
-
-		it('does not remove ⛔ that corresponds to a valid child', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent ⛔ abc123',
-				'\t- [ ] Child 🆔 abc123',
-			], new Set(['abc123']));
-
-			processor.processAllLines(editor, '');
-
-			expect(lines[0]).toContain('⛔ abc123');
-			expect(lines[1]).toContain('🆔 abc123');
 		});
 
 		it('removes orphaned 🆔 from multiple tasks', () => {
@@ -413,10 +404,13 @@ describe('EditorProcessor', () => {
 	});
 
 	describe('deleted child cleanup', () => {
-		it('removes ⛔ from parent when child task line was deleted', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent ⛔ abc123',
-			]);
+		const strippedOnlyLineCases = [
+			{ name: 'removes ⛔ from parent when child task line was deleted', lines: ['- [ ] Parent ⛔ abc123'] },
+			{ name: 'removes ⛔ when referenced 🆔 does not exist in vault either', lines: ['- [ ] Parent ⛔ ghost1'] },
+		];
+
+		it.each(strippedOnlyLineCases)('$name', ({ lines: docLines }) => {
+			const { processor, editor, lines } = createTestProcessor(docLines);
 
 			processor.processAllLines(editor, '');
 
@@ -435,15 +429,25 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).not.toContain('abc123');
 		});
 
-		it('removes ⛔ for deleted child even when not in managedIds', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent ⛔ deleted1',
-				'\t- [ ] Child A',
-			]);
+		const danglingDeletedIdCases = [
+			{
+				name: 'removes ⛔ for deleted child even when not in managedIds',
+				lines: ['- [ ] Parent ⛔ deleted1', '\t- [ ] Child A'],
+				assertIndex: 0,
+			},
+			{
+				name: 'removes dangling ⛔ from non-first line in a list block',
+				lines: ['- [ ] Parent A', '\t- [ ] Parent B ⛔ deleted1'],
+				assertIndex: 1,
+			},
+		];
+
+		it.each(danglingDeletedIdCases)('$name', ({ lines: docLines, assertIndex }) => {
+			const { processor, editor, lines } = createTestProcessor(docLines);
 
 			processor.processAllLines(editor, '');
 
-			expect(lines[0]).not.toContain('deleted1');
+			expect(lines[assertIndex]).not.toContain('deleted1');
 		});
 
 		it('preserves ⛔ when referenced 🆔 exists in another vault file (cross-file)', () => {
@@ -456,16 +460,6 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).toContain('⛔ abc123');
 		});
 
-		it('removes ⛔ when referenced 🆔 does not exist in vault either', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent ⛔ ghost1',
-			]);
-
-			processor.processAllLines(editor, '');
-
-			expect(lines[0]).toBe('- [ ] Parent');
-		});
-
 		it('preserves ⛔ when 🆔 exists in document but not in existingIds', () => {
 			const { processor, editor, lines } = createTestProcessor([
 				'- [ ] Parent ⛔ abc123',
@@ -476,17 +470,6 @@ describe('EditorProcessor', () => {
 			processor.processAllLines(editor, '');
 
 			expect(lines[0]).toContain('⛔ abc123');
-		});
-
-		it('removes dangling ⛔ from non-first line in a list block', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent A',
-				'\t- [ ] Parent B ⛔ deleted1',
-			]);
-
-			processor.processAllLines(editor, '');
-
-			expect(lines[1]).not.toContain('deleted1');
 		});
 
 		it('removes dangling ⛔ from a task in the second list block', () => {
@@ -514,20 +497,15 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).toContain('🆔 abc123');
 		});
 
-		it('removes 🆔 when the ID is NOT in vaultDepIds and no local ⛔ exists', () => {
+		const emptyVaultDepIdsCases = [
+			{ name: 'removes 🆔 when the ID is NOT in vaultDepIds and no local ⛔ exists', vaultDepIds: new Set<string>() },
+			{ name: 'works correctly when depCache returns empty set (no cross-file refs)', vaultDepIds: undefined },
+		];
+
+		it.each(emptyVaultDepIdsCases)('$name', ({ vaultDepIds }) => {
 			const { processor, editor, lines } = createTestProcessor([
 				'- [ ] Task with orphaned ID 🆔 abc123',
-			], new Set(['abc123']), { vaultDepIds: new Set<string>() });
-
-			processor.processAllLines(editor, '');
-
-			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
-		});
-
-		it('works correctly when depCache returns empty set (no cross-file refs)', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Task with orphaned ID 🆔 abc123',
-			], new Set(['abc123']));
+			], new Set(['abc123']), { vaultDepIds });
 
 			processor.processAllLines(editor, '');
 
