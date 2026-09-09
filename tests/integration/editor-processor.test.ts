@@ -1,42 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EditorProcessor } from '../src/editor-processor';
-import { IndentationHandler } from '../src/indentation-handler';
-import { RelationshipAnalyzer } from '../src/relationship-analyzer';
-import type { MarkerCacheLike } from '../src/types';
-import { TaskParser } from '../src/task-parser';
-import { IdEngine } from '../src/id-engine';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
-import { MetadataSyncCache } from '../src/metadata-sync-cache';
-import { MetadataInheritor } from '../src/metadata-inheritor';
-import { LineWriteArbiter } from '../src/line-write-arbiter';
-import { MarkerAccessorRegistry } from '../src/marker-accessor';
-
-/**
- * Minimal Editor mock matching Obsidian's Editor interface surface we use.
- *
- * Defaults the cursor to an out-of-range line so pre-existing tests that
- * predate the line write arbiter, and never intended to place the caret
- * anywhere in particular, are not accidentally protected by cursor-line
- * suppression semantics. Tests that specifically exercise the arbiter
- * pass an explicit cursor.
- */
-function createMockEditor(lines: string[], cursor = { line: -1, ch: 0 }) {
-	return {
-		lineCount: vi.fn(() => lines.length),
-		getLine: vi.fn((n: number) => {
-			if (n < 0 || n >= lines.length) {
-				throw new RangeError(`getLine(${n}) out of bounds (0..${lines.length - 1})`);
-			}
-			return lines[n]!;
-		}),
-		setLine: vi.fn((n: number, text: string) => {
-			lines[n] = text;
-			return text;
-		}),
-		getCursor: vi.fn((_which?: 'anchor' | 'head') => cursor),
-		setSelection: vi.fn(),
-	};
-}
+import { EditorProcessor } from '../../src/editor-processor';
+import { IndentationHandler } from '../../src/indentation-handler';
+import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import type { MarkerCacheLike } from '../../src/types';
+import { TaskParser } from '../../src/task-parser';
+import { IdEngine } from '../../src/id-engine';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { MetadataSyncCache } from '../../src/metadata-sync-cache';
+import { MetadataInheritor } from '../../src/metadata-inheritor';
+import { LineWriteArbiter } from '../../src/line-write-arbiter';
+import { MarkerAccessorRegistry } from '../../src/marker-accessor';
+import { createEditor } from '../fixtures/editor';
 
 function createIdCache(ids: Set<string>, excludedIds?: Set<string>): MarkerCacheLike {
 	return {
@@ -81,7 +55,7 @@ function createTestProcessor(
 		createDepCache(options?.vaultDepIds),
 		arbiter,
 	);
-	const editor = createMockEditor(lines);
+	const editor = createEditor(lines);
 	return { parser, handler, processor, editor, lines, arbiter, idEngine };
 }
 
@@ -111,7 +85,7 @@ describe('EditorProcessor', () => {
 		const { processor } = createTestProcessor(['- [ ] Parent', '\t- [ ] Child']);
 		const lines = ['- [ ] Parent', '\t- [ ] Child'];
 		const cursor = { line: 1, ch: 6 };
-		const editor = createMockEditor(lines, cursor);
+		const editor = createEditor(lines, cursor);
 
 		processor.processAllLines(editor, '');
 
@@ -121,7 +95,7 @@ describe('EditorProcessor', () => {
 
 	it('does not touch the cursor when no line changes', () => {
 		const { processor } = createTestProcessor([]);
-		const editor = createMockEditor(['plain text, not a task'], { line: 0, ch: 4 });
+		const editor = createEditor(['plain text, not a task'], { line: 0, ch: 4 });
 
 		processor.processAllLines(editor, '');
 
@@ -260,7 +234,10 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
 		});
 
-		it('keeps 🆔 when another line still has ⛔ referencing it', () => {
+		// This was two tests with identical setup and identical assertions, one
+		// titled from the child's side and one from the parent's side. Neither
+		// could kill a mutant the other missed, so they are one test now.
+		it('keeps a matching 🆔 and ⛔ pair intact on both the child and the parent', () => {
 			const { processor, editor, lines } = createTestProcessor([
 				'- [ ] Parent ⛔ abc123',
 				'\t- [ ] Child 🆔 abc123',
@@ -268,8 +245,8 @@ describe('EditorProcessor', () => {
 
 			processor.processAllLines(editor, '');
 
-			expect(lines[1]).toContain('🆔 abc123');
 			expect(lines[0]).toContain('⛔ abc123');
+			expect(lines[1]).toContain('🆔 abc123');
 		});
 
 		it('removes stale ⛔ but keeps valid ⛔ on the same parent', () => {
@@ -298,18 +275,6 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).not.toContain('⛔ child1');
 			expect(lines[1]).toContain('⛔ child1');
 			expect(lines[2]).toContain('🆔 child1');
-		});
-
-		it('does not remove ⛔ that corresponds to a valid child', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent ⛔ abc123',
-				'\t- [ ] Child 🆔 abc123',
-			], new Set(['abc123']));
-
-			processor.processAllLines(editor, '');
-
-			expect(lines[0]).toContain('⛔ abc123');
-			expect(lines[1]).toContain('🆔 abc123');
 		});
 
 		it('removes orphaned 🆔 from multiple tasks', () => {
@@ -362,7 +327,7 @@ describe('EditorProcessor', () => {
 				'    - [ ] Build backend ⛔ abc123 🆔 abc444',
 				'    - [ ] Design API schema 🆔 abc123',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createEditor(lines);
 
 			processor.processAllLines(editor, '');
 
@@ -439,10 +404,13 @@ describe('EditorProcessor', () => {
 	});
 
 	describe('deleted child cleanup', () => {
-		it('removes ⛔ from parent when child task line was deleted', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent ⛔ abc123',
-			]);
+		const strippedOnlyLineCases = [
+			{ name: 'removes ⛔ from parent when child task line was deleted', lines: ['- [ ] Parent ⛔ abc123'] },
+			{ name: 'removes ⛔ when referenced 🆔 does not exist in vault either', lines: ['- [ ] Parent ⛔ ghost1'] },
+		];
+
+		it.each(strippedOnlyLineCases)('$name', ({ lines: docLines }) => {
+			const { processor, editor, lines } = createTestProcessor(docLines);
 
 			processor.processAllLines(editor, '');
 
@@ -461,15 +429,25 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).not.toContain('abc123');
 		});
 
-		it('removes ⛔ for deleted child even when not in managedIds', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent ⛔ deleted1',
-				'\t- [ ] Child A',
-			]);
+		const danglingDeletedIdCases = [
+			{
+				name: 'removes ⛔ for deleted child even when not in managedIds',
+				lines: ['- [ ] Parent ⛔ deleted1', '\t- [ ] Child A'],
+				assertIndex: 0,
+			},
+			{
+				name: 'removes dangling ⛔ from non-first line in a list block',
+				lines: ['- [ ] Parent A', '\t- [ ] Parent B ⛔ deleted1'],
+				assertIndex: 1,
+			},
+		];
+
+		it.each(danglingDeletedIdCases)('$name', ({ lines: docLines, assertIndex }) => {
+			const { processor, editor, lines } = createTestProcessor(docLines);
 
 			processor.processAllLines(editor, '');
 
-			expect(lines[0]).not.toContain('deleted1');
+			expect(lines[assertIndex]).not.toContain('deleted1');
 		});
 
 		it('preserves ⛔ when referenced 🆔 exists in another vault file (cross-file)', () => {
@@ -482,16 +460,6 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).toContain('⛔ abc123');
 		});
 
-		it('removes ⛔ when referenced 🆔 does not exist in vault either', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent ⛔ ghost1',
-			]);
-
-			processor.processAllLines(editor, '');
-
-			expect(lines[0]).toBe('- [ ] Parent');
-		});
-
 		it('preserves ⛔ when 🆔 exists in document but not in existingIds', () => {
 			const { processor, editor, lines } = createTestProcessor([
 				'- [ ] Parent ⛔ abc123',
@@ -502,17 +470,6 @@ describe('EditorProcessor', () => {
 			processor.processAllLines(editor, '');
 
 			expect(lines[0]).toContain('⛔ abc123');
-		});
-
-		it('removes dangling ⛔ from non-first line in a list block', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Parent A',
-				'\t- [ ] Parent B ⛔ deleted1',
-			]);
-
-			processor.processAllLines(editor, '');
-
-			expect(lines[1]).not.toContain('deleted1');
 		});
 
 		it('removes dangling ⛔ from a task in the second list block', () => {
@@ -540,20 +497,15 @@ describe('EditorProcessor', () => {
 			expect(lines[0]).toContain('🆔 abc123');
 		});
 
-		it('removes 🆔 when the ID is NOT in vaultDepIds and no local ⛔ exists', () => {
+		const emptyVaultDepIdsCases = [
+			{ name: 'removes 🆔 when the ID is NOT in vaultDepIds and no local ⛔ exists', vaultDepIds: new Set<string>() },
+			{ name: 'works correctly when depCache returns empty set (no cross-file refs)', vaultDepIds: undefined },
+		];
+
+		it.each(emptyVaultDepIdsCases)('$name', ({ vaultDepIds }) => {
 			const { processor, editor, lines } = createTestProcessor([
 				'- [ ] Task with orphaned ID 🆔 abc123',
-			], new Set(['abc123']), { vaultDepIds: new Set<string>() });
-
-			processor.processAllLines(editor, '');
-
-			expect(lines[0]).toBe('- [ ] Task with orphaned ID');
-		});
-
-		it('works correctly when depCache returns empty set (no cross-file refs)', () => {
-			const { processor, editor, lines } = createTestProcessor([
-				'- [ ] Task with orphaned ID 🆔 abc123',
-			], new Set(['abc123']));
+			], new Set(['abc123']), { vaultDepIds });
 
 			processor.processAllLines(editor, '');
 
@@ -630,7 +582,7 @@ describe('EditorProcessor', () => {
 			// cleanup, not silently re-linked under a freshly minted id
 			// (which is what the old, unprotected code did).
 			lines[1] = '\t- [ ] Child';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 6 });
+			const editor2 = createEditor(lines, { line: 1, ch: 6 });
 			processor.processAllLines(editor2, '');
 
 			expect(lines[1]).toBe('\t- [ ] Child');
@@ -649,7 +601,7 @@ describe('EditorProcessor', () => {
 			processor.processAllLines(editor, '');
 
 			lines[1] = '\t- [ ] Child';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 6 });
+			const editor2 = createEditor(lines, { line: 1, ch: 6 });
 			const spy = vi.spyOn(handler, 'processLine');
 			processor.processAllLines(editor2, '');
 
@@ -669,7 +621,7 @@ describe('EditorProcessor', () => {
 			// The caret sits on the parent line; the user deletes the ⛔
 			// dependency with no event firing in between.
 			lines[0] = '- [ ] Parent';
-			const editor2 = createMockEditor(lines, { line: 0, ch: 8 });
+			const editor2 = createEditor(lines, { line: 0, ch: 8 });
 			processor.processAllLines(editor2, '');
 
 			expect(lines[0]).toBe('- [ ] Parent');
@@ -692,7 +644,7 @@ describe('EditorProcessor', () => {
 			// sync so a subsequent cleanup decision is not made against a
 			// stale snapshot.
 			lines[0] = '- [ ] Task \u{1F194} abc123';
-			const editor2 = createMockEditor(lines, { line: 0, ch: 5 });
+			const editor2 = createEditor(lines, { line: 0, ch: 5 });
 			processor.processAllLines(editor2, '');
 
 			expect(lines[0]).toBe('- [ ] Task \u{1F194} abc123');
@@ -724,7 +676,7 @@ describe('EditorProcessor', () => {
 			// trailing space, with the caret parked at the end of it.
 			lines.splice(1, 1);
 			lines[0] = '- [ ] Parent \u26D4 abc123 ';
-			const editor2 = createMockEditor(lines, { line: 0, ch: lines[0]!.length });
+			const editor2 = createEditor(lines, { line: 0, ch: lines[0].length });
 			processor.processAllLines(editor2, 'test.md');
 
 			expect(lines[0]).toBe('- [ ] Parent ');
@@ -758,7 +710,7 @@ describe('EditorProcessor', () => {
 			// leaving a single trailing space, with the caret parked at
 			// the end of the line.
 			lines[1] = '\t- [ ] Child \u{1F194} abc123 ';
-			const editor2 = createMockEditor(lines, { line: 1, ch: lines[1]!.length });
+			const editor2 = createEditor(lines, { line: 1, ch: lines[1].length });
 			processor.processAllLines(editor2, 'test.md');
 
 			expect(lines[1]).toBe('\t- [ ] Child \u{1F194} abc123 ');
@@ -777,7 +729,7 @@ describe('EditorProcessor', () => {
 			// The user hand-edits the child's id; the caret sits on the
 			// child line while doing so.
 			lines[1] = '\t- [ ] Child \u{1F194} myid';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 10 });
+			const editor2 = createEditor(lines, { line: 1, ch: 10 });
 			processor.processAllLines(editor2, '');
 
 			expect(lines[1]).toContain('\u{1F194} myid');
@@ -803,7 +755,7 @@ describe('EditorProcessor', () => {
 			// a prior snapshot at all: it has to recognize the fragment
 			// from the line's own content.
 			lines[1] = '\t- [ ] Child \u{1F194}';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 14 });
+			const editor2 = createEditor(lines, { line: 1, ch: 14 });
 			const spy = vi.spyOn(handler, 'processLine');
 			processor.processAllLines(editor2, '');
 
@@ -829,11 +781,11 @@ describe('EditorProcessor', () => {
 			// The caret sits on the parent line; the user deletes the
 			// first id in the list, leaving a leading comma mid-edit.
 			lines[0] = '- [ ] Parent \u26D4 ,def456';
-			const editor2 = createMockEditor(lines, { line: 0, ch: 15 });
+			const editor2 = createEditor(lines, { line: 0, ch: 15 });
 			processor.processAllLines(editor2, '');
 
 			expect(lines[0]).toBe('- [ ] Parent \u26D4 ,def456');
-			expect(lines[0]!.split('\u26D4').length - 1).toBeLessThanOrEqual(1);
+			expect(lines[0].split('\u26D4').length - 1).toBeLessThanOrEqual(1);
 
 			// REGRESSION: neither child was touched by the user, and the
 			// parent's dependency list is only *transiently* malformed
@@ -874,7 +826,7 @@ describe('EditorProcessor', () => {
 			// and is not the cursor line, so it carries no write protection
 			// of its own; only the arbiter's frozen-id union protects it.
 			lines[1] = '\t- [ ] Child \u{1F194}';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 14 });
+			const editor2 = createEditor(lines, { line: 1, ch: 14 });
 			processor.processAllLines(editor2, '');
 
 			expect(lines[0]).toBe('- [ ] Parent \u26D4 abc123');
@@ -891,7 +843,7 @@ describe('EditorProcessor', () => {
 			processor.processAllLines(editor, '');
 
 			lines[1] = '\t- [ ] Child \u{1F194}';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 14 });
+			const editor2 = createEditor(lines, { line: 1, ch: 14 });
 			processor.processAllLines(editor2, '');
 			expect(lines[0]).toBe('- [ ] Parent \u26D4 abc123');
 
@@ -899,7 +851,7 @@ describe('EditorProcessor', () => {
 			// line (e.g. the debounce fires again before the user resumes
 			// typing). The endPass snapshot rebuild at the end of pass 1
 			// must not have evaporated the protection.
-			const editor3 = createMockEditor(lines, { line: 1, ch: 14 });
+			const editor3 = createEditor(lines, { line: 1, ch: 14 });
 			processor.processAllLines(editor3, '');
 
 			expect(lines[0]).toBe('- [ ] Parent \u26D4 abc123');
@@ -916,7 +868,7 @@ describe('EditorProcessor', () => {
 			processor.processAllLines(editor, '');
 
 			lines[1] = '\t- [ ] Child \u{1F194}';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 14 });
+			const editor2 = createEditor(lines, { line: 1, ch: 14 });
 			processor.processAllLines(editor2, '');
 			expect(lines[0]).toBe('- [ ] Parent \u26D4 abc123');
 
@@ -925,7 +877,7 @@ describe('EditorProcessor', () => {
 			// must resume: the parent's \u26D4 must move to the new id, proving
 			// no leftover freeze pins the old one in place.
 			lines[1] = '\t- [ ] Child \u{1F194} xyz789';
-			const editor3 = createMockEditor(lines, { line: 1, ch: 18 });
+			const editor3 = createEditor(lines, { line: 1, ch: 18 });
 			processor.processAllLines(editor3, '');
 
 			expect(lines[0]).toContain('\u26D4 xyz789');
@@ -943,7 +895,7 @@ describe('EditorProcessor', () => {
 			processor.processAllLines(editor, '');
 
 			lines[1] = '\t- [ ] Child \u{1F194}';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 14 });
+			const editor2 = createEditor(lines, { line: 1, ch: 14 });
 			processor.processAllLines(editor2, '');
 
 			// Pass 2c (orphan-id cleanup) only ever considers a line whose
@@ -974,7 +926,7 @@ describe('EditorProcessor', () => {
 			processor.processAllLines(editor, 'current.md');
 
 			lines[1] = '\t- [ ] Child \u{1F194}';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 14 });
+			const editor2 = createEditor(lines, { line: 1, ch: 14 });
 			processor.processAllLines(editor2, 'current.md');
 
 			const parentDeps = parser.getTaskDependencies(lines[0]!);
@@ -999,10 +951,10 @@ describe('EditorProcessor', () => {
 			// 'ghost1' survive too; it must still be stripped.
 			lines[0] = '- [ ] Parent \u26D4 abc123,ghost1';
 			lines[1] = '\t- [ ] Child \u{1F194}';
-			const editor2 = createMockEditor(lines, { line: 1, ch: 14 });
+			const editor2 = createEditor(lines, { line: 1, ch: 14 });
 			processor.processAllLines(editor2, '');
 
-			const parentDeps = parser.getTaskDependencies(lines[0]!);
+			const parentDeps = parser.getTaskDependencies(lines[0]);
 			expect(parentDeps).toContain('abc123');
 			expect(parentDeps).not.toContain('ghost1');
 		});
@@ -1023,7 +975,7 @@ describe('EditorProcessor', () => {
 				'\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2026-0',
 			];
 			const { processor } = createTestProcessor(lines, new Set(['abc123']));
-			const editor = createMockEditor(lines, { line: 0, ch: 0 });
+			const editor = createEditor(lines, { line: 0, ch: 0 });
 			processor.processAllLines(editor, '');
 
 			expect(lines[1]).toBe('\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2026-0');
@@ -1039,7 +991,7 @@ describe('EditorProcessor', () => {
 				arbiter,
 				excludedIds: new Set(['def456']),
 			});
-			const editor = createMockEditor(lines, { line: 0, ch: 14 });
+			const editor = createEditor(lines, { line: 0, ch: 14 });
 
 			processor.processAllLines(editor, '');
 
@@ -1053,7 +1005,7 @@ describe('EditorProcessor', () => {
 			expect(lines).toEqual(['- [ ] Parent \u26D4 ,def456', '\t- [ ] Child']);
 			expect(editor.setLine.mock.calls.some(([n]) => n === 1)).toBe(false);
 
-			const editor2 = createMockEditor(lines, { line: 0, ch: 14 });
+			const editor2 = createEditor(lines, { line: 0, ch: 14 });
 			processor.processAllLines(editor2, '');
 
 			// Second pass: still a genuine no-op, including at the setLine
@@ -1063,7 +1015,7 @@ describe('EditorProcessor', () => {
 
 			// The parent's fragment resolves into a well-formed dependency.
 			lines[0] = '- [ ] Parent \u26D4 def456';
-			const editor3 = createMockEditor(lines, { line: -1, ch: 0 });
+			const editor3 = createEditor(lines, { line: -1, ch: 0 });
 			processor.processAllLines(editor3, '');
 
 			expect(lines[1]).toMatch(/\u{1F194} [a-z0-9]{6}/u);
@@ -1140,17 +1092,17 @@ describe('EditorProcessor.processAllLines deletion fuzz (LineWriteArbiter harden
 			// second pass. That is intended "verify before delete" behavior, not a bug, so
 			// one warm-up pass runs here before the idempotence comparison to avoid a false
 			// failure on that legitimate grace period.
-			const warmupEditor = createMockEditor([...lines], { line: 0, ch: mutatedLine.length });
+			const warmupEditor = createEditor([...lines], { line: 0, ch: mutatedLine.length });
 			processor.processAllLines(warmupEditor, 'fuzz.md');
 			lines[0] = warmupEditor.getLine(0);
 			lines[1] = warmupEditor.getLine(1);
 
-			const firstEditor = createMockEditor([...lines], { line: 0, ch: lines[0]!.length });
+			const firstEditor = createEditor([...lines], { line: 0, ch: lines[0].length });
 			processor.processAllLines(firstEditor, 'fuzz.md');
 			const firstMutated = firstEditor.getLine(0);
 			const firstUnrelated = firstEditor.getLine(1);
 
-			const secondEditor = createMockEditor([firstMutated, firstUnrelated], {
+			const secondEditor = createEditor([firstMutated, firstUnrelated], {
 				line: 0,
 				ch: firstMutated.length,
 			});

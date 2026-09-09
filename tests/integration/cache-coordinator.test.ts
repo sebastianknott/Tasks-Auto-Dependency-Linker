@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CacheCoordinator } from '../src/cache-coordinator';
-import { IdCache, DepCache, IdEngine } from '../src/id-engine';
-import { MetadataSyncCache } from '../src/metadata-sync-cache';
-import { TaskParser } from '../src/task-parser';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
-import { RelationshipAnalyzer } from '../src/relationship-analyzer';
+import { CacheCoordinator } from '../../src/cache-coordinator';
+import { IdCache, DepCache, IdEngine } from '../../src/id-engine';
+import { MetadataSyncCache } from '../../src/metadata-sync-cache';
+import { TaskParser } from '../../src/task-parser';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
 import { TFile, TFolder } from 'obsidian';
 import type { TAbstractFile } from 'obsidian';
 

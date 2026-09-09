@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TFile, TFolder } from 'obsidian';
-import TasksAutoDependencyLinker from '../src/main';
-import type { CapturedUpdateListener } from './__mocks__/codemirror-view';
+import TasksAutoDependencyLinker from '../../src/main';
+import type { CapturedUpdateListener } from '../__mocks__/codemirror-view';
 import type { ViewUpdate } from '@codemirror/view';
+import { createEditor } from '../fixtures/editor';
 
 /**
  * Helper: cast plugin to access mock internals set up by the obsidian mock.
@@ -113,70 +114,44 @@ describe('TasksAutoDependencyLinker', () => {
 			expect(readSpy).toHaveBeenCalledWith(file1);
 		});
 
-		it('uses useTab:true as default when vault.getConfig returns undefined', async () => {
-			const p = plugin as PluginInternals;
-
-			// Provide a space-indented task. With useTab:true (default),
-			// spaces should NOT count as indentation, so no parent is found
-			const mockEditor = {
-				lineCount: () => 2,
-				getLine: (n: number) => {
-					if (n === 0) return '- [ ] Parent';
-					if (n === 1) return '    - [ ] Child with spaces';
-					throw new RangeError(`out of bounds: ${n}`);
+		const useTabCases = [
+			{
+				name: 'uses useTab:true as default when vault.getConfig returns undefined',
+				getConfig: (_key: string): unknown => undefined,
+				expectSetLine: false,
+			},
+			{
+				name: 'reads useTab:false from vault config so spaces count as indentation',
+				getConfig: (key: string): unknown => {
+					if (key === 'useTab') return false;
+					if (key === 'tabSize') return 4;
+					return undefined;
 				},
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
+				expectSetLine: true,
+			},
+		];
+
+		// With useTab:true (default), spaces do not count as indentation, so no
+		// parent is found for the space-indented child, and setLine is never
+		// called. With useTab:false and tabSize:4, four spaces count as one
+		// indent level, a parent is found, and setLine is called.
+		it.each(useTabCases)('$name', async ({ getConfig, expectSetLine }) => {
+			const p = plugin as PluginInternals;
+			p.app.vault.getConfig = getConfig;
+
+			const lines = ['- [ ] Parent', '    - [ ] Child with spaces'];
+			const mockEditor = createEditor(lines, { line: 0, ch: 0 });
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
 
 			await plugin.onload();
 
-			// Trigger editor-change → debounce → processActiveEditor
 			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
 			vi.useFakeTimers();
 			wsHandlers[0].cb();
 			vi.advanceTimersByTime(300);
 			vi.useRealTimers();
 
-			// With useTab:true, spaces are ignored → no parent found → no setLine
-			expect(mockEditor.setLine).not.toHaveBeenCalled();
-		});
-
-		it('reads useTab:false from vault config so spaces count as indentation', async () => {
-			const p = plugin as PluginInternals;
-
-			p.app.vault.getConfig = (key: string) => {
-				if (key === 'useTab') return false;
-				if (key === 'tabSize') return 4;
-				return undefined;
-			};
-
-			const mockEditor = {
-				lineCount: () => 2,
-				getLine: (n: number) => {
-					if (n === 0) return '- [ ] Parent';
-					if (n === 1) return '    - [ ] Child with spaces';
-					throw new RangeError(`out of bounds: ${n}`);
-				},
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
-			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
-
-			await plugin.onload();
-
-			// Trigger
-			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
-			vi.useFakeTimers();
-			wsHandlers[0].cb();
-			vi.advanceTimersByTime(300);
-			vi.useRealTimers();
-
-			// With useTab:false, 4 spaces = 1 indent → parent found → setLine called
-			expect(mockEditor.setLine).toHaveBeenCalled();
+			expect(mockEditor.setLine.mock.calls.length > 0).toBe(expectSetLine);
 		});
 	});
 
@@ -252,7 +227,12 @@ describe('TasksAutoDependencyLinker', () => {
 	});
 
 	describe('vault modify handler', () => {
-		it('updates cache when a .md file is modified', async () => {
+		const modifyCases = [
+			{ name: 'updates cache when a .md file is modified', extension: 'md', expectRead: true },
+			{ name: 'ignores non-md files', extension: 'css', expectRead: false },
+		];
+
+		it.each(modifyCases)('$name', async ({ extension, expectRead }) => {
 			const p = plugin as PluginInternals;
 			const readSpy = vi.fn(async () => '- [ ] Task \u{1F194} ccc333');
 			p.app.vault.cachedRead = readSpy;
@@ -260,76 +240,54 @@ describe('TasksAutoDependencyLinker', () => {
 			await plugin.onload();
 
 			const modifyHandlers = p._vaultEmitter.getHandlers('modify');
-			const mdFile = new TFile();
-			mdFile.extension = 'md';
+			const file = new TFile();
+			file.extension = extension;
 
-			await modifyHandlers[0].cb(mdFile);
+			await modifyHandlers[0].cb(file);
 
-			expect(readSpy).toHaveBeenCalledWith(mdFile);
-		});
-
-		it('ignores non-md files', async () => {
-			const p = plugin as PluginInternals;
-			const readSpy = vi.fn(async () => '');
-			p.app.vault.cachedRead = readSpy;
-
-			await plugin.onload();
-
-			const modifyHandlers = p._vaultEmitter.getHandlers('modify');
-			const cssFile = new TFile();
-			cssFile.extension = 'css';
-
-			await modifyHandlers[0].cb(cssFile);
-
-			expect(readSpy).not.toHaveBeenCalled();
+			expect(readSpy.mock.calls).toEqual(expectRead ? [[file]] : []);
 		});
 	});
 
 	describe('vault delete handler', () => {
-		it('forgets a deleted file so its ids no longer protect dependents', async () => {
+		const deleteCases = [
+			{
+				name: 'forgets a deleted file so its ids no longer protect dependents',
+				seedPath: 'a.md',
+				id: 'aaa111',
+				// deleting the seeded file itself
+				makeDeleteTarget: (seedFile: TFile): TFile | TFolder => seedFile,
+			},
+			{
+				name: 'drops descendants of a deleted folder path',
+				seedPath: 'notes/a.md',
+				id: 'nested1',
+				// deleting an ancestor folder of the seeded file
+				makeDeleteTarget: (_seedFile: TFile): TFile | TFolder => {
+					const folder = new TFolder();
+					folder.path = 'notes';
+					return folder;
+				},
+			},
+		];
+
+		it.each(deleteCases)('$name', async ({ seedPath, id, makeDeleteTarget }) => {
 			const p = plugin as PluginInternals;
 			p.app.vault.getMarkdownFiles = () => [];
-			p.app.vault.cachedRead = vi.fn(async (file: TFile) => {
-				if (file.path === 'a.md') {
-					return '- [ ] Task \u{1F194} aaa111';
-				}
-				return '';
-			});
+			p.app.vault.cachedRead = vi.fn(async () => `- [ ] Task \u{1F194} ${id}`);
 
 			await plugin.onload();
 
-			const fileA = new TFile();
-			fileA.path = 'a.md';
-			await p.coordinator.updateForFile(fileA);
-			expect(p.idCache.getAll().has('aaa111')).toBe(true);
+			const seedFile = new TFile();
+			seedFile.path = seedPath;
+			await p.coordinator.updateForFile(seedFile);
+			expect(p.idCache.getAll().has(id)).toBe(true);
 
 			const deleteHandlers = p._vaultEmitter.getHandlers('delete');
 			expect(deleteHandlers.length).toBe(1);
-			deleteHandlers[0].cb(fileA);
+			deleteHandlers[0].cb(makeDeleteTarget(seedFile));
 
-			expect(p.idCache.getAll().has('aaa111')).toBe(false);
-		});
-
-		it('drops descendants of a deleted folder path', async () => {
-			const p = plugin as PluginInternals;
-			p.app.vault.getMarkdownFiles = () => [];
-			p.app.vault.cachedRead = vi.fn(
-				async () => '- [ ] Task \u{1F194} nested1',
-			);
-
-			await plugin.onload();
-
-			const fileA = new TFile();
-			fileA.path = 'notes/a.md';
-			await p.coordinator.updateForFile(fileA);
-			expect(p.idCache.getAll().has('nested1')).toBe(true);
-
-			const folder = new TFolder();
-			folder.path = 'notes';
-			const deleteHandlers = p._vaultEmitter.getHandlers('delete');
-			deleteHandlers[0].cb(folder);
-
-			expect(p.idCache.getAll().has('nested1')).toBe(false);
+			expect(p.idCache.getAll().has(id)).toBe(false);
 		});
 	});
 
@@ -382,12 +340,28 @@ describe('TasksAutoDependencyLinker', () => {
 	});
 
 	describe('file-open handler', () => {
-		it('seeds the arbiter snapshot from the opened file\'s on-disk content', async () => {
+		const openedFile = new TFile();
+		openedFile.path = 'opened.md';
+		openedFile.extension = 'md';
+
+		const nonMdFile = new TFile();
+		nonMdFile.extension = 'css';
+
+		const fileOpenCases = [
+			{
+				name: 'seeds the arbiter snapshot from the opened file\'s on-disk content',
+				file: openedFile as TFile | null,
+				expectSeeded: true,
+			},
+			{ name: 'does nothing when no file is open (null)', file: null, expectSeeded: false },
+			{ name: 'ignores non-md files', file: nonMdFile as TFile | null, expectSeeded: false },
+		];
+
+		it.each(fileOpenCases)('$name', async ({ file, expectSeeded }) => {
 			const p = plugin as PluginInternals;
-			const file = new TFile();
-			file.path = 'opened.md';
-			file.extension = 'md';
-			p.app.vault.cachedRead = vi.fn(async () => '- [ ] Task \u{1F194} abc123');
+			const content = '- [ ] Task \u{1F194} abc123';
+			const readSpy = vi.fn(async () => content);
+			p.app.vault.cachedRead = readSpy;
 
 			await plugin.onload();
 			const seedSpy = vi.spyOn(p.arbiter, 'seedFromText');
@@ -396,37 +370,9 @@ describe('TasksAutoDependencyLinker', () => {
 			expect(fileOpenHandlers.length).toBe(1);
 			await fileOpenHandlers[0].cb(file);
 
-			expect(p.app.vault.cachedRead).toHaveBeenCalledWith(file);
-			expect(seedSpy).toHaveBeenCalledWith('opened.md', '- [ ] Task \u{1F194} abc123');
+			expect(readSpy.mock.calls).toEqual(expectSeeded ? [[file]] : []);
+			expect(seedSpy.mock.calls).toEqual(expectSeeded && file ? [[file.path, content]] : []);
 			seedSpy.mockRestore();
-		});
-
-		it('does nothing when no file is open (null)', async () => {
-			const p = plugin as PluginInternals;
-			const readSpy = vi.fn(async () => '');
-			p.app.vault.cachedRead = readSpy;
-
-			await plugin.onload();
-
-			const fileOpenHandlers = p._workspaceEmitter.getHandlers('file-open');
-			await fileOpenHandlers[0].cb(null);
-
-			expect(readSpy).not.toHaveBeenCalled();
-		});
-
-		it('ignores non-md files', async () => {
-			const p = plugin as PluginInternals;
-			const readSpy = vi.fn(async () => '');
-			p.app.vault.cachedRead = readSpy;
-
-			await plugin.onload();
-
-			const cssFile = new TFile();
-			cssFile.extension = 'css';
-			const fileOpenHandlers = p._workspaceEmitter.getHandlers('file-open');
-			await fileOpenHandlers[0].cb(cssFile);
-
-			expect(readSpy).not.toHaveBeenCalled();
 		});
 	});
 
@@ -450,17 +396,8 @@ describe('TasksAutoDependencyLinker', () => {
 		it('processes lines when a MarkdownView is active', async () => {
 			const p = plugin as PluginInternals;
 
-			const mockEditor = {
-				lineCount: () => 2,
-				getLine: (n: number) => {
-					if (n === 0) return '- [ ] Parent';
-					if (n === 1) return '\t- [ ] Child';
-					throw new RangeError(`out of bounds: ${n}`);
-				},
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
+			const lines = ['- [ ] Parent', '\t- [ ] Child'];
+			const mockEditor = createEditor(lines, { line: 0, ch: 0 });
 
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
 
@@ -478,12 +415,9 @@ describe('TasksAutoDependencyLinker', () => {
 		it('passes current file path to getAllExcluding for cross-file awareness', async () => {
 			const p = plugin as PluginInternals;
 
+			const lines = ['- [ ] Root task'];
 			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
+				...createEditor(lines, { line: 0, ch: 0 }),
 				getValue: vi.fn(() => '- [ ] Root task'),
 			};
 
@@ -509,13 +443,8 @@ describe('TasksAutoDependencyLinker', () => {
 		it('uses empty string when view.file is null', async () => {
 			const p = plugin as PluginInternals;
 
-			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
+			const lines = ['- [ ] Root task'];
+			const mockEditor = createEditor(lines, { line: 0, ch: 0 });
 
 			// view.file is undefined (no file property)
 			p.app.workspace.getActiveViewOfType = () => ({
@@ -539,12 +468,9 @@ describe('TasksAutoDependencyLinker', () => {
 		it('refreshes the coordinator with the live editor content after processing, for a file-backed view', async () => {
 			const p = plugin as PluginInternals;
 
+			const lines = ['- [ ] Root task'];
 			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
+				...createEditor(lines, { line: 0, ch: 0 }),
 				getValue: vi.fn(() => '- [ ] Root task \u{1F194} live1'),
 			};
 
@@ -573,12 +499,9 @@ describe('TasksAutoDependencyLinker', () => {
 		it('does not refresh the coordinator with live content when the view has no backing file', async () => {
 			const p = plugin as PluginInternals;
 
+			const lines = ['- [ ] Root task'];
 			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
+				...createEditor(lines, { line: 0, ch: 0 }),
 				getValue: vi.fn(() => '- [ ] Root task'),
 			};
 
@@ -604,12 +527,9 @@ describe('TasksAutoDependencyLinker', () => {
 			const p = plugin as PluginInternals;
 			const callOrder: string[] = [];
 
+			const lines = ['- [ ] Root task'];
 			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
+				...createEditor(lines, { line: 0, ch: 0 }),
 				getValue: vi.fn(() => {
 					callOrder.push('getValue');
 					return '- [ ] Root task \u{1F194} order1';
@@ -652,17 +572,8 @@ describe('TasksAutoDependencyLinker', () => {
 		it('routes a cursor line change through the debounce, not a direct synchronous call', async () => {
 			const p = plugin as PluginInternals;
 
-			const mockEditor = {
-				lineCount: () => 2,
-				getLine: (n: number) => {
-					if (n === 0) return '- [ ] Parent';
-					if (n === 1) return '\t- [ ] Child';
-					throw new RangeError(`out of bounds: ${n}`);
-				},
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
+			const lines = ['- [ ] Parent', '\t- [ ] Child'];
+			const mockEditor = createEditor(lines, { line: 0, ch: 0 });
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
 
 			await plugin.onload();

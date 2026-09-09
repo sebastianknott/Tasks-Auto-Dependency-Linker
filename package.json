@@ -14,7 +14,8 @@
 		"test:mutation": "stryker run",
 		"test:mutation:incremental": "stryker run --incremental",
 		"fta": "fta src",
-		"check": "npm run lint && tsc -noEmit -skipLibCheck && npm run fta && npm test && npm run build"
+		"typecheck:tests": "tsc -noEmit -skipLibCheck -p tests/tsconfig.json",
+		"check": "npm run lint && tsc -noEmit -skipLibCheck && npm run typecheck:tests && npm run fta && npm test && npm run build"
 	},
 	"keywords": [
 		"obsidian",
