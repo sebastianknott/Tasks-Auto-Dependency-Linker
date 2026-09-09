@@ -12,202 +12,184 @@ import {
 	type MarkerAccessor,
 } from '../src/marker-accessor';
 
-describe('IdAccessor', () => {
-	const accessor = new IdAccessor(new TaskParser());
+// Every scalar contract row starts from and reduces back to this line, so
+// it is a shared constant rather than two more identical table columns.
+const BARE_TASK = '- [ ] Task';
+
+interface ScalarAccessorContract {
+	name: string;
+	factory: () => MarkerAccessor;
+	type: MarkerType;
+	// markedLine doubles as the remove() input, because reading a value out
+	// of a line and stripping that same value back off it are inverses.
+	markedLine: string;
+	readValue: string;
+	applyValue: string;
+	applyResult: string;
+	replaceBase: string;
+	replaceValue: string;
+	replaceResult: string;
+}
+
+const scalarAccessorContracts: ScalarAccessorContract[] = [
+	{
+		name: 'IdAccessor',
+		factory: () => new IdAccessor(new TaskParser()),
+		type: MarkerType.Id,
+		markedLine: '- [ ] Task \u{1F194} abc123',
+		readValue: 'abc123',
+		applyValue: 'abc123',
+		applyResult: '- [ ] Task \u{1F194} abc123',
+		replaceBase: '- [ ] Task \u{1F194} old',
+		replaceValue: 'new',
+		replaceResult: '- [ ] Task \u{1F194} new',
+	},
+	{
+		name: 'DueAccessor',
+		factory: () => new DueAccessor(new TaskMetadataParser()),
+		type: MarkerType.Due,
+		markedLine: '- [ ] Task \u{1F4C5} 2025-01-15',
+		readValue: '2025-01-15',
+		applyValue: '2025-06-01',
+		applyResult: '- [ ] Task \u{1F4C5} 2025-06-01',
+		replaceBase: '- [ ] Task \u{1F4C5} 2025-01-01',
+		replaceValue: '2025-06-01',
+		replaceResult: '- [ ] Task \u{1F4C5} 2025-06-01',
+	},
+	{
+		name: 'ScheduledAccessor',
+		factory: () => new ScheduledAccessor(new TaskMetadataParser()),
+		type: MarkerType.Scheduled,
+		markedLine: '- [ ] Task \u{23F3} 2025-04-10',
+		readValue: '2025-04-10',
+		applyValue: '2025-06-02',
+		applyResult: '- [ ] Task \u{23F3} 2025-06-02',
+		replaceBase: '- [ ] Task \u{23F3} 2025-01-01',
+		replaceValue: '2025-06-02',
+		replaceResult: '- [ ] Task \u{23F3} 2025-06-02',
+	},
+	{
+		name: 'PriorityAccessor',
+		// Return type is the interface, not the class: PriorityAccessor
+		// narrows hasFragment to zero parameters, so the factory must
+		// return MarkerAccessor for this shared contract table to
+		// type-check against the interface's one-parameter hasFragment.
+		factory: () => new PriorityAccessor(new TaskMetadataParser()),
+		type: MarkerType.Priority,
+		markedLine: '- [ ] Task \u{23EB}',
+		readValue: 'high',
+		applyValue: 'high',
+		applyResult: '- [ ] Task \u{23EB}',
+		replaceBase: '- [ ] Task \u{1F53D}',
+		replaceValue: 'highest',
+		replaceResult: '- [ ] Task \u{1F53A}',
+	},
+];
+
+describe.each(scalarAccessorContracts)('$name', (contract) => {
+	const accessor = contract.factory();
 
 	it('exposes its marker type', () => {
-		expect(accessor.type).toBe(MarkerType.Id);
+		expect(accessor.type).toBe(contract.type);
 	});
 
-	it('reads the id from a line', () => {
-		expect(accessor.read('- [ ] Task \u{1F194} abc123')).toBe('abc123');
+	it('reads the value from a line', () => {
+		expect(accessor.read(contract.markedLine)).toBe(contract.readValue);
 	});
 
-	it('reads null when no id is present', () => {
-		expect(accessor.read('- [ ] Task')).toBeNull();
+	it('reads null when no value is present', () => {
+		expect(accessor.read(BARE_TASK)).toBeNull();
 	});
 
-	it('applies an id to a line with none', () => {
-		expect(accessor.apply('- [ ] Task', 'abc123')).toBe(
-			'- [ ] Task \u{1F194} abc123',
+	it('applies a value to a line with none', () => {
+		expect(accessor.apply(BARE_TASK, contract.applyValue)).toBe(
+			contract.applyResult,
 		);
 	});
 
-	it('replaces an existing id rather than appending a second marker', () => {
-		expect(accessor.apply('- [ ] Task \u{1F194} old', 'new')).toBe(
-			'- [ ] Task \u{1F194} new',
-		);
-	});
-
-	it('removes an id from a line', () => {
-		expect(accessor.remove('- [ ] Task \u{1F194} abc123')).toBe('- [ ] Task');
-	});
-
-	it('reports a fragment when the glyph is present but the id text is gone', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{1F194}')).toBe(true);
-	});
-
-	it('reports a fragment for a bare glyph with a trailing space and no id', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{1F194} ')).toBe(true);
-	});
-
-	it('does not report a fragment when the id is well-formed', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{1F194} abc123')).toBe(false);
-	});
-
-	it('does not report a fragment when there is no id marker at all', () => {
-		expect(accessor.hasFragment('- [ ] Task')).toBe(false);
-	});
-});
-
-describe('DueAccessor', () => {
-	const accessor = new DueAccessor(new TaskMetadataParser());
-
-	it('exposes its marker type', () => {
-		expect(accessor.type).toBe(MarkerType.Due);
-	});
-
-	it('reads the due date from a line', () => {
-		expect(accessor.read('- [ ] Task \u{1F4C5} 2025-01-15')).toBe(
-			'2025-01-15',
-		);
-	});
-
-	it('reads null when no due date is present', () => {
-		expect(accessor.read('- [ ] Task')).toBeNull();
-	});
-
-	it('applies a due date to a line with none', () => {
-		expect(accessor.apply('- [ ] Task', '2025-06-01')).toBe(
-			'- [ ] Task \u{1F4C5} 2025-06-01',
-		);
-	});
-
-	it('replaces an existing due date in place', () => {
+	it('replaces an existing value in place', () => {
 		expect(
-			accessor.apply('- [ ] Task \u{1F4C5} 2025-01-01', '2025-06-01'),
-		).toBe('- [ ] Task \u{1F4C5} 2025-06-01');
+			accessor.apply(contract.replaceBase, contract.replaceValue),
+		).toBe(contract.replaceResult);
 	});
 
-	it('removes a due date from a line', () => {
-		expect(accessor.remove('- [ ] Task \u{1F4C5} 2025-01-15')).toBe(
-			'- [ ] Task',
-		);
-	});
-
-	it('reports a fragment when the glyph is present but the date is incomplete', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{1F4C5} 2025-0')).toBe(true);
-	});
-
-	it('reports a fragment for a bare due glyph with nothing after it', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{1F4C5}')).toBe(true);
-	});
-
-	it('does not report a fragment when the due date is well-formed', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{1F4C5} 2025-01-15')).toBe(false);
-	});
-
-	it('does not report a fragment when there is no due marker at all', () => {
-		expect(accessor.hasFragment('- [ ] Task')).toBe(false);
+	it('removes the value from a line', () => {
+		expect(accessor.remove(contract.markedLine)).toBe(BARE_TASK);
 	});
 });
 
-describe('ScheduledAccessor', () => {
-	const accessor = new ScheduledAccessor(new TaskMetadataParser());
+interface FragmentAccessorContract {
+	name: string;
+	factory: () => MarkerAccessor;
+	incompleteLine: string;
+	bareLine: string;
+	wellFormedLine: string;
+}
 
-	it('exposes its marker type', () => {
-		expect(accessor.type).toBe(MarkerType.Scheduled);
+const fragmentAccessorContracts: FragmentAccessorContract[] = [
+	{
+		name: 'IdAccessor',
+		factory: () => new IdAccessor(new TaskParser()),
+		incompleteLine: '- [ ] Task \u{1F194}',
+		bareLine: '- [ ] Task \u{1F194} ',
+		wellFormedLine: '- [ ] Task \u{1F194} abc123',
+	},
+	{
+		name: 'DueAccessor',
+		factory: () => new DueAccessor(new TaskMetadataParser()),
+		incompleteLine: '- [ ] Task \u{1F4C5} 2025-0',
+		bareLine: '- [ ] Task \u{1F4C5}',
+		wellFormedLine: '- [ ] Task \u{1F4C5} 2025-01-15',
+	},
+	{
+		name: 'ScheduledAccessor',
+		factory: () => new ScheduledAccessor(new TaskMetadataParser()),
+		incompleteLine: '- [ ] Task \u{23F3} 2025-0',
+		bareLine: '- [ ] Task \u{23F3}',
+		wellFormedLine: '- [ ] Task \u{23F3} 2025-04-10',
+	},
+];
+
+describe.each(fragmentAccessorContracts)('$name hasFragment', (contract) => {
+	const accessor = contract.factory();
+
+	it('reports a fragment when the glyph is present but the value is incomplete or gone', () => {
+		expect(accessor.hasFragment(contract.incompleteLine)).toBe(true);
 	});
 
-	it('reads the scheduled date from a line', () => {
-		expect(accessor.read('- [ ] Task \u{23F3} 2025-04-10')).toBe(
-			'2025-04-10',
-		);
+	it('reports a fragment for a bare glyph with nothing after it', () => {
+		expect(accessor.hasFragment(contract.bareLine)).toBe(true);
 	});
 
-	it('reads null when no scheduled date is present', () => {
-		expect(accessor.read('- [ ] Task')).toBeNull();
+	it('does not report a fragment when the value is well-formed', () => {
+		expect(accessor.hasFragment(contract.wellFormedLine)).toBe(false);
 	});
 
-	it('applies a scheduled date to a line with none', () => {
-		expect(accessor.apply('- [ ] Task', '2025-06-02')).toBe(
-			'- [ ] Task \u{23F3} 2025-06-02',
-		);
-	});
-
-	it('replaces an existing scheduled date in place', () => {
-		expect(
-			accessor.apply('- [ ] Task \u{23F3} 2025-01-01', '2025-06-02'),
-		).toBe('- [ ] Task \u{23F3} 2025-06-02');
-	});
-
-	it('removes a scheduled date from a line', () => {
-		expect(accessor.remove('- [ ] Task \u{23F3} 2025-04-10')).toBe(
-			'- [ ] Task',
-		);
-	});
-
-	it('reports a fragment when the glyph is present but the date is incomplete', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{23F3} 2025-0')).toBe(true);
-	});
-
-	it('reports a fragment for a bare scheduled glyph with nothing after it', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{23F3}')).toBe(true);
-	});
-
-	it('does not report a fragment when the scheduled date is well-formed', () => {
-		expect(accessor.hasFragment('- [ ] Task \u{23F3} 2025-04-10')).toBe(false);
-	});
-
-	it('does not report a fragment when there is no scheduled marker at all', () => {
-		expect(accessor.hasFragment('- [ ] Task')).toBe(false);
+	it('does not report a fragment when there is no marker at all', () => {
+		expect(accessor.hasFragment(BARE_TASK)).toBe(false);
 	});
 });
 
-describe('PriorityAccessor', () => {
-	// Typed as the interface on purpose: PriorityAccessor narrows
-	// `hasFragment` to zero parameters, and the tests below assert that the
-	// contract still answers false for any line callers hand it.
+describe('PriorityAccessor hasFragment', () => {
+	// A priority glyph is a single code point, so PriorityAccessor has no
+	// "incomplete" or "bare" state to represent. It cannot supply the rows
+	// the fragmentAccessorContracts table above requires, so its two
+	// hasFragment behaviors stay as standalone assertions.
 	const accessor: MarkerAccessor = new PriorityAccessor(new TaskMetadataParser());
-
-	it('exposes its marker type', () => {
-		expect(accessor.type).toBe(MarkerType.Priority);
-	});
-
-	it('reads the priority from a line', () => {
-		expect(accessor.read('- [ ] Task \u{23EB}')).toBe('high');
-	});
-
-	it('reads null when no priority is present', () => {
-		expect(accessor.read('- [ ] Task')).toBeNull();
-	});
-
-	it('applies a priority to a line with none', () => {
-		expect(accessor.apply('- [ ] Task', 'high')).toBe(
-			'- [ ] Task \u{23EB}',
-		);
-	});
-
-	it('replaces an existing priority glyph in place', () => {
-		expect(accessor.apply('- [ ] Task \u{1F53D}', 'highest')).toBe(
-			'- [ ] Task \u{1F53A}',
-		);
-	});
-
-	it('removes a priority glyph from a line', () => {
-		expect(accessor.remove('- [ ] Task \u{23EB}')).toBe('- [ ] Task');
-	});
 
 	it('never reports a fragment, since a priority glyph is a single code point', () => {
 		expect(accessor.hasFragment('- [ ] Task \u{23EB}')).toBe(false);
 	});
 
 	it('does not report a fragment when no priority glyph is present', () => {
-		expect(accessor.hasFragment('- [ ] Task')).toBe(false);
+		expect(accessor.hasFragment(BARE_TASK)).toBe(false);
 	});
 });
 
 describe('DependencyAccessor', () => {
+	// Multi-value accessor: read() returns a Set and apply()/remove() act
+	// on one id within a list rather than a single scalar value, so none
+	// of the contract tables above apply to this shape.
 	const accessor = new DependencyAccessor(new TaskParser());
 
 	it('reads the dependency id set from a line', () => {
@@ -217,11 +199,11 @@ describe('DependencyAccessor', () => {
 	});
 
 	it('reads an empty set when no dependency is present', () => {
-		expect(accessor.read('- [ ] Task')).toEqual(new Set());
+		expect(accessor.read(BARE_TASK)).toEqual(new Set());
 	});
 
 	it('applies a dependency id to a line with none', () => {
-		expect(accessor.apply('- [ ] Task', 'abc')).toBe(
+		expect(accessor.apply(BARE_TASK, 'abc')).toBe(
 			'- [ ] Task \u{26D4} abc',
 		);
 	});
@@ -265,7 +247,7 @@ describe('DependencyAccessor', () => {
 	});
 
 	it('does not report a fragment when no dependency marker is present at all', () => {
-		expect(accessor.hasFragment('- [ ] Task')).toBe(false);
+		expect(accessor.hasFragment(BARE_TASK)).toBe(false);
 	});
 });
 
