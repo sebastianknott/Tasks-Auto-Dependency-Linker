@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import type { Editor } from 'obsidian';
-import { ObsidianEditorAdapter } from '../src/obsidian-editor-adapter';
-import type { EditorPositionLike } from '../src/types';
+import { ObsidianEditorAdapter } from '../../src/obsidian-editor-adapter';
+import type { EditorPositionLike } from '../../src/types';
 
 /**
  * The five members of Obsidian's `Editor` that the adapter touches, kept as

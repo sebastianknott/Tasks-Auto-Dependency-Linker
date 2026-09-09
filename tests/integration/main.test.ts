@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TFile, TFolder } from 'obsidian';
-import TasksAutoDependencyLinker from '../src/main';
-import type { CapturedUpdateListener } from './__mocks__/codemirror-view';
+import TasksAutoDependencyLinker from '../../src/main';
+import type { CapturedUpdateListener } from '../__mocks__/codemirror-view';
 import type { ViewUpdate } from '@codemirror/view';
-import { createEditor } from './fixtures/editor';
+import { createEditor } from '../fixtures/editor';
 
 /**
  * Helper: cast plugin to access mock internals set up by the obsidian mock.

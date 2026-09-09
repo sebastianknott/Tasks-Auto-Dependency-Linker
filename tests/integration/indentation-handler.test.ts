@@ -1,17 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { IndentationHandler } from '../src/indentation-handler';
-import { RelationshipAnalyzer } from '../src/relationship-analyzer';
-import { TaskParser } from '../src/task-parser';
-import { IdEngine } from '../src/id-engine';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
-import { MetadataSyncCache } from '../src/metadata-sync-cache';
-import { MetadataInheritor } from '../src/metadata-inheritor';
-import { MarkerAccessorRegistry } from '../src/marker-accessor';
+import { IndentationHandler } from '../../src/indentation-handler';
+import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import { TaskParser } from '../../src/task-parser';
+import { IdEngine } from '../../src/id-engine';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { MetadataSyncCache } from '../../src/metadata-sync-cache';
+import { MetadataInheritor } from '../../src/metadata-inheritor';
+import { MarkerAccessorRegistry } from '../../src/marker-accessor';
 import {
 	createCorrectingEditor,
 	createLineEditor,
 	createRefusingEditor,
-} from './fixtures/editor';
+} from '../fixtures/editor';
 
 describe('IndentationHandler', () => {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);

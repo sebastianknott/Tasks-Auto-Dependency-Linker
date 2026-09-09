@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { MetadataInheritor } from '../src/metadata-inheritor';
-import { TaskParser } from '../src/task-parser';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
-import { RelationshipAnalyzer } from '../src/relationship-analyzer';
-import { MetadataSyncCache } from '../src/metadata-sync-cache';
-import { MarkerAccessorRegistry } from '../src/marker-accessor';
+import { MetadataInheritor } from '../../src/metadata-inheritor';
+import { TaskParser } from '../../src/task-parser';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import { MetadataSyncCache } from '../../src/metadata-sync-cache';
+import { MarkerAccessorRegistry } from '../../src/marker-accessor';
 
 describe('MetadataInheritor', () => {
 	let metadataParser: TaskMetadataParser;

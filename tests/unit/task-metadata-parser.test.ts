@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TaskMetadataParser, type Priority } from '../src/task-metadata-parser';
+import { TaskMetadataParser, type Priority } from '../../src/task-metadata-parser';
 
 describe('TaskMetadataParser', () => {
 	const parser = new TaskMetadataParser();

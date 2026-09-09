@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { RelationshipAnalyzer } from '../src/relationship-analyzer';
-import { TaskParser } from '../src/task-parser';
+import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import { TaskParser } from '../../src/task-parser';
 
 describe('RelationshipAnalyzer', () => {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);

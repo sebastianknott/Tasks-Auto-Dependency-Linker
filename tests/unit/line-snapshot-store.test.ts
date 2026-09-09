@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { LineSnapshotStore } from '../src/line-snapshot-store';
-import { MarkerAccessorRegistry, MarkerType } from '../src/marker-accessor';
-import { TaskParser } from '../src/task-parser';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
-import { createLineEditor } from './fixtures/editor';
+import { LineSnapshotStore } from '../../src/line-snapshot-store';
+import { MarkerAccessorRegistry, MarkerType } from '../../src/marker-accessor';
+import { TaskParser } from '../../src/task-parser';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { createLineEditor } from '../fixtures/editor';
 
 function createStore(): LineSnapshotStore {
 	const registry = new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser());

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { LineWriteArbiter } from '../src/line-write-arbiter';
-import { MarkerAccessorRegistry, MarkerType } from '../src/marker-accessor';
-import { TaskParser } from '../src/task-parser';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
-import { createLineEditor } from './fixtures/editor';
+import { LineWriteArbiter } from '../../src/line-write-arbiter';
+import { MarkerAccessorRegistry, MarkerType } from '../../src/marker-accessor';
+import { TaskParser } from '../../src/task-parser';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { createLineEditor } from '../fixtures/editor';
 
 function createArbiter(): LineWriteArbiter {
 	const registry = new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser());

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { TaskParser } from '../src/task-parser';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
+import { TaskParser } from '../../src/task-parser';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
 import {
 	MarkerType,
 	IdAccessor,
@@ -10,7 +10,7 @@ import {
 	DependencyAccessor,
 	MarkerAccessorRegistry,
 	type MarkerAccessor,
-} from '../src/marker-accessor';
+} from '../../src/marker-accessor';
 
 // Every scalar contract row starts from and reduces back to this line, so
 // it is a shared constant rather than two more identical table columns.

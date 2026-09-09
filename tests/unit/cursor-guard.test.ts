@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CursorGuard } from '../src/cursor-guard';
-import type { EditorLike } from '../src/types';
-import { createEditor } from './fixtures/editor';
+import { CursorGuard } from '../../src/cursor-guard';
+import type { EditorLike } from '../../src/types';
+import { createEditor } from '../fixtures/editor';
 
 describe('CursorGuard', () => {
 	it('delegates lineCount, getLine, and setLine to the wrapped editor', () => {

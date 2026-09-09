@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TaskParser } from '../src/task-parser';
+import { TaskParser } from '../../src/task-parser';
 
 describe('TaskParser', () => {
 	describe('static regex constants', () => {
