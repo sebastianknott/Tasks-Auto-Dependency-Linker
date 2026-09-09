@@ -3,6 +3,7 @@ import { TFile, TFolder } from 'obsidian';
 import TasksAutoDependencyLinker from '../src/main';
 import type { CapturedUpdateListener } from './__mocks__/codemirror-view';
 import type { ViewUpdate } from '@codemirror/view';
+import { createEditor } from './fixtures/editor';
 
 /**
  * Helper: cast plugin to access mock internals set up by the obsidian mock.
@@ -138,17 +139,8 @@ describe('TasksAutoDependencyLinker', () => {
 			const p = plugin as PluginInternals;
 			p.app.vault.getConfig = getConfig;
 
-			const mockEditor = {
-				lineCount: () => 2,
-				getLine: (n: number) => {
-					if (n === 0) return '- [ ] Parent';
-					if (n === 1) return '    - [ ] Child with spaces';
-					throw new RangeError(`out of bounds: ${n}`);
-				},
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
+			const lines = ['- [ ] Parent', '    - [ ] Child with spaces'];
+			const mockEditor = createEditor(lines, { line: 0, ch: 0 });
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
 
 			await plugin.onload();
@@ -404,17 +396,8 @@ describe('TasksAutoDependencyLinker', () => {
 		it('processes lines when a MarkdownView is active', async () => {
 			const p = plugin as PluginInternals;
 
-			const mockEditor = {
-				lineCount: () => 2,
-				getLine: (n: number) => {
-					if (n === 0) return '- [ ] Parent';
-					if (n === 1) return '\t- [ ] Child';
-					throw new RangeError(`out of bounds: ${n}`);
-				},
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
+			const lines = ['- [ ] Parent', '\t- [ ] Child'];
+			const mockEditor = createEditor(lines, { line: 0, ch: 0 });
 
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
 
@@ -432,12 +415,9 @@ describe('TasksAutoDependencyLinker', () => {
 		it('passes current file path to getAllExcluding for cross-file awareness', async () => {
 			const p = plugin as PluginInternals;
 
+			const lines = ['- [ ] Root task'];
 			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
+				...createEditor(lines, { line: 0, ch: 0 }),
 				getValue: vi.fn(() => '- [ ] Root task'),
 			};
 
@@ -463,13 +443,8 @@ describe('TasksAutoDependencyLinker', () => {
 		it('uses empty string when view.file is null', async () => {
 			const p = plugin as PluginInternals;
 
-			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
+			const lines = ['- [ ] Root task'];
+			const mockEditor = createEditor(lines, { line: 0, ch: 0 });
 
 			// view.file is undefined (no file property)
 			p.app.workspace.getActiveViewOfType = () => ({
@@ -493,12 +468,9 @@ describe('TasksAutoDependencyLinker', () => {
 		it('refreshes the coordinator with the live editor content after processing, for a file-backed view', async () => {
 			const p = plugin as PluginInternals;
 
+			const lines = ['- [ ] Root task'];
 			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
+				...createEditor(lines, { line: 0, ch: 0 }),
 				getValue: vi.fn(() => '- [ ] Root task \u{1F194} live1'),
 			};
 
@@ -527,12 +499,9 @@ describe('TasksAutoDependencyLinker', () => {
 		it('does not refresh the coordinator with live content when the view has no backing file', async () => {
 			const p = plugin as PluginInternals;
 
+			const lines = ['- [ ] Root task'];
 			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
+				...createEditor(lines, { line: 0, ch: 0 }),
 				getValue: vi.fn(() => '- [ ] Root task'),
 			};
 
@@ -558,12 +527,9 @@ describe('TasksAutoDependencyLinker', () => {
 			const p = plugin as PluginInternals;
 			const callOrder: string[] = [];
 
+			const lines = ['- [ ] Root task'];
 			const mockEditor = {
-				lineCount: () => 1,
-				getLine: () => '- [ ] Root task',
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
+				...createEditor(lines, { line: 0, ch: 0 }),
 				getValue: vi.fn(() => {
 					callOrder.push('getValue');
 					return '- [ ] Root task \u{1F194} order1';
@@ -606,17 +572,8 @@ describe('TasksAutoDependencyLinker', () => {
 		it('routes a cursor line change through the debounce, not a direct synchronous call', async () => {
 			const p = plugin as PluginInternals;
 
-			const mockEditor = {
-				lineCount: () => 2,
-				getLine: (n: number) => {
-					if (n === 0) return '- [ ] Parent';
-					if (n === 1) return '\t- [ ] Child';
-					throw new RangeError(`out of bounds: ${n}`);
-				},
-				setLine: vi.fn(),
-				getCursor: () => ({ line: 0, ch: 0 }),
-				setSelection: vi.fn(),
-			};
+			const lines = ['- [ ] Parent', '\t- [ ] Child'];
+			const mockEditor = createEditor(lines, { line: 0, ch: 0 });
 			p.app.workspace.getActiveViewOfType = () => ({ editor: mockEditor });
 
 			await plugin.onload();
