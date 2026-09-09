@@ -3,22 +3,11 @@ import { LineSnapshotStore } from '../src/line-snapshot-store';
 import { MarkerAccessorRegistry, MarkerType } from '../src/marker-accessor';
 import { TaskParser } from '../src/task-parser';
 import { TaskMetadataParser } from '../src/task-metadata-parser';
-import type { LineEditor } from '../src/types';
+import { createLineEditor } from './fixtures/editor';
 
 function createStore(): LineSnapshotStore {
 	const registry = new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser());
 	return new LineSnapshotStore(registry);
-}
-
-function createTarget(lines: string[]): LineEditor {
-	return {
-		lineCount: () => lines.length,
-		getLine: (n: number) => lines[n]!,
-		setLine: (n: number, text: string) => {
-			lines[n] = text;
-			return text;
-		},
-	};
 }
 
 describe('LineSnapshotStore: get', () => {
@@ -30,7 +19,7 @@ describe('LineSnapshotStore: get', () => {
 
 	it('returns the entry captured by rebuildAll', () => {
 		const store = createStore();
-		const target = createTarget(['- [ ] Task \u{1F194} abc']);
+		const target = createLineEditor(['- [ ] Task \u{1F194} abc']);
 
 		store.rebuildAll(target, -1, false);
 
@@ -41,7 +30,7 @@ describe('LineSnapshotStore: get', () => {
 describe('LineSnapshotStore: reset', () => {
 	it('discards every snapshot entry', () => {
 		const store = createStore();
-		const target = createTarget(['- [ ] Task \u{1F194} abc']);
+		const target = createLineEditor(['- [ ] Task \u{1F194} abc']);
 		store.rebuildAll(target, -1, false);
 		expect(store.get(0)).not.toBeUndefined();
 
@@ -54,7 +43,7 @@ describe('LineSnapshotStore: reset', () => {
 describe('LineSnapshotStore: rebuildAll', () => {
 	it('builds a fresh snapshot per line from the target', () => {
 		const store = createStore();
-		const target = createTarget(['- [ ] A \u{1F194} aaa', '- [ ] B \u{1F194} bbb']);
+		const target = createLineEditor(['- [ ] A \u{1F194} aaa', '- [ ] B \u{1F194} bbb']);
 
 		store.rebuildAll(target, -1, false);
 
@@ -64,7 +53,7 @@ describe('LineSnapshotStore: rebuildAll', () => {
 
 	it('captures the dependency ids and bareText for each line', () => {
 		const store = createStore();
-		const target = createTarget(['- [ ] Parent \u26D4 abc,def']);
+		const target = createLineEditor(['- [ ] Parent \u26D4 abc,def']);
 
 		store.rebuildAll(target, -1, false);
 
@@ -74,12 +63,12 @@ describe('LineSnapshotStore: rebuildAll', () => {
 
 	it('retains the previous snapshot for the cursor line while it is indeterminate', () => {
 		const store = createStore();
-		const target1 = createTarget(['- [ ] Task \u{1F194} abc']);
+		const target1 = createLineEditor(['- [ ] Task \u{1F194} abc']);
 		store.rebuildAll(target1, -1, false);
 
 		// The glyph is left bare mid-deletion: a fragment that must not
 		// overwrite the last well-formed snapshot for this line.
-		const target2 = createTarget(['- [ ] Task \u{1F194}']);
+		const target2 = createLineEditor(['- [ ] Task \u{1F194}']);
 		store.rebuildAll(target2, 0, true);
 
 		expect(store.get(0)?.markers.get(MarkerType.Id)).toBe('abc');
@@ -87,12 +76,12 @@ describe('LineSnapshotStore: rebuildAll', () => {
 
 	it('builds fresh for a non-cursor line even while the cursor line elsewhere is indeterminate', () => {
 		const store = createStore();
-		const target1 = createTarget(['- [ ] A \u{1F194} aaa', '- [ ] B \u{1F194} bbb']);
+		const target1 = createLineEditor(['- [ ] A \u{1F194} aaa', '- [ ] B \u{1F194} bbb']);
 		store.rebuildAll(target1, -1, false);
 
 		// Line 0 changed (not the cursor line, which is line 1 and is
 		// indeterminate); line 0 must still be rebuilt fresh.
-		const target2 = createTarget(['- [ ] A', '- [ ] B \u{1F194}']);
+		const target2 = createLineEditor(['- [ ] A', '- [ ] B \u{1F194}']);
 		store.rebuildAll(target2, 1, true);
 
 		expect(store.get(0)?.markers.get(MarkerType.Id)).toBeNull();
@@ -100,7 +89,7 @@ describe('LineSnapshotStore: rebuildAll', () => {
 
 	it('builds fresh for the cursor line when indeterminate but nothing was retained yet', () => {
 		const store = createStore();
-		const target = createTarget(['- [ ] Parent \u26D4 ,def']);
+		const target = createLineEditor(['- [ ] Parent \u26D4 ,def']);
 
 		store.rebuildAll(target, 0, true);
 
@@ -120,7 +109,7 @@ describe('LineSnapshotStore: seed', () => {
 
 	it('overwrites whatever the store held before', () => {
 		const store = createStore();
-		const target = createTarget(['- [ ] Task \u{1F194} abc']);
+		const target = createLineEditor(['- [ ] Task \u{1F194} abc']);
 		store.rebuildAll(target, -1, false);
 
 		store.seed('- [ ] Task');

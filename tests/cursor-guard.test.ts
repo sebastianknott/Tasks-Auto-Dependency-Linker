@@ -1,27 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CursorGuard } from '../src/cursor-guard';
-import type { EditorLike, EditorPositionLike } from '../src/types';
-
-/**
- * Editor mock that records selection calls and tracks a mutable cursor.
- */
-function createMockEditor(lines: string[], anchor: EditorPositionLike, head: EditorPositionLike) {
-	return {
-		lineCount: vi.fn(() => lines.length),
-		getLine: vi.fn((n: number) => lines[n]!),
-		setLine: vi.fn((n: number, text: string) => {
-			lines[n] = text;
-			return text;
-		}),
-		getCursor: vi.fn((which?: 'anchor' | 'head') => (which === 'head' ? head : anchor)),
-		setSelection: vi.fn(),
-	};
-}
+import type { EditorLike } from '../src/types';
+import { createEditor } from './fixtures/editor';
 
 describe('CursorGuard', () => {
 	it('delegates lineCount, getLine, and setLine to the wrapped editor', () => {
 		const lines = ['a', 'b'];
-		const editor = createMockEditor(lines, { line: 0, ch: 0 }, { line: 0, ch: 0 });
+		const editor = createEditor(lines, { line: 0, ch: 0 }, { line: 0, ch: 0 });
 		const guard = new CursorGuard(editor);
 
 		expect(guard.lineCount()).toBe(2);
@@ -33,7 +18,7 @@ describe('CursorGuard', () => {
 	it('restores the captured selection when a line was changed', () => {
 		const anchor = { line: 1, ch: 3 };
 		const head = { line: 1, ch: 5 };
-		const editor = createMockEditor(['x', 'y'], anchor, head);
+		const editor = createEditor(['x', 'y'], anchor, head);
 		const guard = new CursorGuard(editor);
 
 		guard.setLine(1, 'y changed');
@@ -44,7 +29,7 @@ describe('CursorGuard', () => {
 	});
 
 	it('does not touch the selection when no line changed', () => {
-		const editor = createMockEditor(['x'], { line: 0, ch: 0 }, { line: 0, ch: 0 });
+		const editor = createEditor(['x'], { line: 0, ch: 0 }, { line: 0, ch: 0 });
 		const guard = new CursorGuard(editor);
 
 		guard.restore();
@@ -55,7 +40,7 @@ describe('CursorGuard', () => {
 	it('captures the selection at construction, before any edits', () => {
 		const anchor = { line: 2, ch: 1 };
 		const head = { line: 2, ch: 4 };
-		const editor = createMockEditor(['a', 'b', 'cccc'], anchor, head);
+		const editor = createEditor(['a', 'b', 'cccc'], anchor, head);
 		new CursorGuard(editor);
 
 		// Both anchor and head are read up front.
@@ -66,7 +51,7 @@ describe('CursorGuard', () => {
 	it('restores using the position captured at construction, not a later one', () => {
 		const captured = { line: 0, ch: 2 };
 		const editor: EditorLike & { setSelection: ReturnType<typeof vi.fn> } =
-			createMockEditor(['hello'], captured, captured);
+			createEditor(['hello'], captured, captured);
 		const guard = new CursorGuard(editor);
 
 		// Simulate the cursor moving after capture (should be ignored).
@@ -79,7 +64,7 @@ describe('CursorGuard', () => {
 
 	it('clamps the restored ch to the new line length when a write shrank the cursor line', () => {
 		const position = { line: 0, ch: 11 }; // end of 'hello world'
-		const editor = createMockEditor(['hello world'], position, position);
+		const editor = createEditor(['hello world'], position, position);
 		const guard = new CursorGuard(editor);
 
 		guard.setLine(0, 'hi');
@@ -90,7 +75,7 @@ describe('CursorGuard', () => {
 
 	it('treats a captured line equal to lineCount as out of range', () => {
 		const position = { line: 2, ch: 3 }; // lineCount is 2, so line 2 does not exist
-		const editor = createMockEditor(['a', 'b'], position, position);
+		const editor = createEditor(['a', 'b'], position, position);
 		const guard = new CursorGuard(editor);
 
 		guard.setLine(0, 'changed');
@@ -101,7 +86,7 @@ describe('CursorGuard', () => {
 
 	it('leaves an out-of-range captured line untouched instead of throwing', () => {
 		const position = { line: -1, ch: 5 };
-		const editor = createMockEditor(['a'], position, position);
+		const editor = createEditor(['a'], position, position);
 		const guard = new CursorGuard(editor);
 
 		guard.setLine(0, 'b');
@@ -113,7 +98,7 @@ describe('CursorGuard', () => {
 	it('does not touch a ch that still fits within the new line length', () => {
 		const anchor = { line: 1, ch: 3 };
 		const head = { line: 1, ch: 5 };
-		const editor = createMockEditor(['x', 'y'], anchor, head);
+		const editor = createEditor(['x', 'y'], anchor, head);
 		const guard = new CursorGuard(editor);
 
 		guard.setLine(1, 'y changed, still long enough');
@@ -123,7 +108,7 @@ describe('CursorGuard', () => {
 	});
 
 	it('returns the text it was handed from setLine', () => {
-		const editor = createMockEditor(['a', 'b'], { line: 0, ch: 0 }, { line: 0, ch: 0 });
+		const editor = createEditor(['a', 'b'], { line: 0, ch: 0 }, { line: 0, ch: 0 });
 		const guard = new CursorGuard(editor);
 
 		expect(guard.setLine(0, 'changed')).toBe('changed');
@@ -131,14 +116,14 @@ describe('CursorGuard', () => {
 
 	it('exposes cursorLine from the head captured at construction', () => {
 		const head = { line: 3, ch: 2 };
-		const editor = createMockEditor(['a', 'b', 'c', 'd'], { line: 3, ch: 0 }, head);
+		const editor = createEditor(['a', 'b', 'c', 'd'], { line: 3, ch: 0 }, head);
 		const guard = new CursorGuard(editor);
 
 		expect(guard.cursorLine).toBe(3);
 	});
 
 	it('cursorLine does not change when the underlying cursor moves later', () => {
-		const editor = createMockEditor(['a', 'b'], { line: 0, ch: 0 }, { line: 0, ch: 0 });
+		const editor = createEditor(['a', 'b'], { line: 0, ch: 0 }, { line: 0, ch: 0 });
 		const guard = new CursorGuard(editor);
 
 		editor.getCursor = vi.fn(() => ({ line: 1, ch: 0 }));
