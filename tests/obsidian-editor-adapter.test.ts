@@ -1,11 +1,26 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, type Mock } from 'vitest';
+import type { Editor } from 'obsidian';
 import { ObsidianEditorAdapter } from '../src/obsidian-editor-adapter';
 import type { EditorPositionLike } from '../src/types';
 
 /**
- * Mimics Obsidian's real `Editor`, whose `setLine` returns `void`.
+ * The five members of Obsidian's `Editor` that the adapter touches, kept as
+ * spies so tests can assert on the write-through calls.
  */
-function createRealEditorMock(lines: string[]) {
+type RealEditorMock = Editor & {
+	setLine: Mock<(n: number, text: string) => void>;
+	setSelection: Mock<
+		(anchor: EditorPositionLike, head: EditorPositionLike) => void
+	>;
+};
+
+/**
+ * Mimics Obsidian's real `Editor`, whose `setLine` returns `void`.
+ *
+ * The cast is unavoidable: `Editor` declares 28 members, and stubbing the 23
+ * the adapter never calls would add noise without adding coverage.
+ */
+function createRealEditorMock(lines: string[]): RealEditorMock {
 	return {
 		lineCount: vi.fn(() => lines.length),
 		getLine: vi.fn((n: number) => lines[n]!),
@@ -17,7 +32,7 @@ function createRealEditorMock(lines: string[]) {
 				which === 'head' ? { line: 1, ch: 1 } : { line: 0, ch: 0 },
 		),
 		setSelection: vi.fn(),
-	};
+	} as unknown as RealEditorMock;
 }
 
 describe('ObsidianEditorAdapter', () => {

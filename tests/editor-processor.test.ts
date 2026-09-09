@@ -724,7 +724,7 @@ describe('EditorProcessor', () => {
 			// trailing space, with the caret parked at the end of it.
 			lines.splice(1, 1);
 			lines[0] = '- [ ] Parent \u26D4 abc123 ';
-			const editor2 = createMockEditor(lines, { line: 0, ch: lines[0]!.length });
+			const editor2 = createMockEditor(lines, { line: 0, ch: lines[0].length });
 			processor.processAllLines(editor2, 'test.md');
 
 			expect(lines[0]).toBe('- [ ] Parent ');
@@ -758,7 +758,7 @@ describe('EditorProcessor', () => {
 			// leaving a single trailing space, with the caret parked at
 			// the end of the line.
 			lines[1] = '\t- [ ] Child \u{1F194} abc123 ';
-			const editor2 = createMockEditor(lines, { line: 1, ch: lines[1]!.length });
+			const editor2 = createMockEditor(lines, { line: 1, ch: lines[1].length });
 			processor.processAllLines(editor2, 'test.md');
 
 			expect(lines[1]).toBe('\t- [ ] Child \u{1F194} abc123 ');
@@ -833,7 +833,7 @@ describe('EditorProcessor', () => {
 			processor.processAllLines(editor2, '');
 
 			expect(lines[0]).toBe('- [ ] Parent \u26D4 ,def456');
-			expect(lines[0]!.split('\u26D4').length - 1).toBeLessThanOrEqual(1);
+			expect(lines[0].split('\u26D4').length - 1).toBeLessThanOrEqual(1);
 
 			// REGRESSION: neither child was touched by the user, and the
 			// parent's dependency list is only *transiently* malformed
@@ -1002,7 +1002,7 @@ describe('EditorProcessor', () => {
 			const editor2 = createMockEditor(lines, { line: 1, ch: 14 });
 			processor.processAllLines(editor2, '');
 
-			const parentDeps = parser.getTaskDependencies(lines[0]!);
+			const parentDeps = parser.getTaskDependencies(lines[0]);
 			expect(parentDeps).toContain('abc123');
 			expect(parentDeps).not.toContain('ghost1');
 		});
@@ -1145,7 +1145,7 @@ describe('EditorProcessor.processAllLines deletion fuzz (LineWriteArbiter harden
 			lines[0] = warmupEditor.getLine(0);
 			lines[1] = warmupEditor.getLine(1);
 
-			const firstEditor = createMockEditor([...lines], { line: 0, ch: lines[0]!.length });
+			const firstEditor = createMockEditor([...lines], { line: 0, ch: lines[0].length });
 			processor.processAllLines(firstEditor, 'fuzz.md');
 			const firstMutated = firstEditor.getLine(0);
 			const firstUnrelated = firstEditor.getLine(1);

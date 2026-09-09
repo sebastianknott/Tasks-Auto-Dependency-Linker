@@ -165,7 +165,10 @@ describe('ScheduledAccessor', () => {
 });
 
 describe('PriorityAccessor', () => {
-	const accessor = new PriorityAccessor(new TaskMetadataParser());
+	// Typed as the interface on purpose: PriorityAccessor narrows
+	// `hasFragment` to zero parameters, and the tests below assert that the
+	// contract still answers false for any line callers hand it.
+	const accessor: MarkerAccessor = new PriorityAccessor(new TaskMetadataParser());
 
 	it('exposes its marker type', () => {
 		expect(accessor.type).toBe(MarkerType.Priority);
