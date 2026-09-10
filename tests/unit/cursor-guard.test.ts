@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CursorGuard } from '../../src/cursor-guard';
+import { CursorGuard } from '../../src/editing/cursor-guard';
 import type { EditorLike } from '../../src/types';
 import { createEditor } from '../fixtures/editor';
 

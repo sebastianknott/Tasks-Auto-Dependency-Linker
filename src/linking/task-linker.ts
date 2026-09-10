@@ -2,38 +2,39 @@
  * Indentation-based dependency linking for the Tasks Auto-Dependency Linker.
  *
  * Detects parent-child relationships from indentation and automatically
- * adds `🆔` / `⛔` markers using {@link TaskParser} and {@link IdEngine}.
+ * adds `🆔` / `⛔` markers using {@link TaskParser} and {@link IdGenerator}.
  */
 
-import { TaskParser } from './task-parser';
-import { IdEngine } from './id-engine';
-import type { RelationshipAnalyzer } from './relationship-analyzer';
+import { TaskParser } from '../parsing/task-parser';
+import { IdGenerator } from './id-generator';
+import type { RelationshipAnalyzer } from '../parsing/relationship-analyzer';
 import type { MetadataInheritor } from './metadata-inheritor';
-import type { LineEditor } from './types';
+import type { LineEditor } from '../types';
 
 /**
- * Processes indentation changes and manages task dependency markers.
+ * Links child tasks to their parents based on indentation.
  *
- * Instantiate with a {@link TaskParser}, {@link IdEngine},
+ * Instantiate with a {@link TaskParser}, {@link IdGenerator},
  * {@link RelationshipAnalyzer}, and {@link MetadataInheritor}, then call
- * {@link processLine} on each line that may have changed indentation.
+ * {@link prepareForLinkPass} once and {@link processLine} on each line
+ * that may have changed indentation.
  */
-export class IndentationHandler {
+export class TaskLinker {
 	private readonly parser: TaskParser;
 	private readonly relAnalyzer: RelationshipAnalyzer;
-	private readonly idEngine: IdEngine;
+	private readonly idGenerator: IdGenerator;
 	private readonly inheritor: MetadataInheritor;
 	/** Snapshot of editor lines set once before each link pass. */
 	private snapshot: string[] = new Array<string>();
 
 	constructor(
 		parser: TaskParser,
-		idEngine: IdEngine,
+		idGenerator: IdGenerator,
 		relAnalyzer: RelationshipAnalyzer,
 		inheritor: MetadataInheritor,
 	) {
 		this.parser = parser;
-		this.idEngine = idEngine;
+		this.idGenerator = idGenerator;
 		this.relAnalyzer = relAnalyzer;
 		this.inheritor = inheritor;
 	}
@@ -99,7 +100,7 @@ export class IndentationHandler {
 		let childId = this.parser.getTaskId(childLine);
 		let mintedId: string | null = null;
 		if (!childId) {
-			childId = this.idEngine.generateUniqueId(existingIds);
+			childId = this.idGenerator.generateUniqueId(existingIds);
 			childLine = this.parser.addIdToLine(childLine, childId);
 			mintedId = childId;
 		}
@@ -127,69 +128,5 @@ export class IndentationHandler {
 		this.inheritor.confirmWrite(editor.getLine(lineIndex));
 
 		return mintedId;
-	}
-
-
-	/**
-	 * Removes `⛔` markers from a task line that are not in the desired
-	 * set of dependency IDs. Returns the updated line.
-	 *
-	 * When `managedIds` is provided, only deps whose ID is in that set
-	 * are considered for removal. Deps referencing IDs outside the set
-	 * (e.g. cross-list references) are left untouched.
-	 */
-	removeStaleDeps(
-		line: string,
-		desiredDeps: Set<string>,
-		managedIds?: Set<string>,
-	): string {
-		let result = line;
-		for (const dep of this.parser.getTaskDependencies(line)) {
-			if (managedIds && !managedIds.has(dep)) {
-				continue;
-			}
-			if (!desiredDeps.has(dep)) {
-				result = this.parser.removeDependencyFromLine(result, dep);
-			}
-		}
-		return result;
-	}
-
-	/**
-	 * Returns true if the given ID is referenced as a `⛔` dependency
-	 * on any line in the provided array.
-	 */
-	isIdReferencedAsDep(lines: string[], id: string): boolean {
-		for (const line of lines) {
-			if (this.parser.getTaskDependencies(line).includes(id)) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Removes `⛔` markers that reference IDs with no corresponding `🆔`
-	 * in the document. Returns the updated line.
-	 *
-	 * A `⛔` is considered dangling when the ID it references does not
-	 * appear as a `🆔` marker anywhere in the provided `knownIds` set.
-	 * This handles the case where a child task was deleted entirely.
-	 *
-	 * Uses the live document IDs (not the vault cache) as the source of
-	 * truth, because the vault cache may be stale for the current file
-	 * during an editing session.
-	 */
-	removeDanglingDeps(
-		line: string,
-		knownIds: Set<string>,
-	): string {
-		let result = line;
-		for (const dep of this.parser.getTaskDependencies(line)) {
-			if (!knownIds.has(dep)) {
-				result = this.parser.removeDependencyFromLine(result, dep);
-			}
-		}
-		return result;
 	}
 }

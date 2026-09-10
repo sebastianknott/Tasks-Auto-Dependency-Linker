@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CacheCoordinator } from '../../src/cache-coordinator';
-import { IdCache, DepCache, IdEngine } from '../../src/id-engine';
-import { MetadataSyncCache } from '../../src/metadata-sync-cache';
-import { TaskParser } from '../../src/task-parser';
-import { TaskMetadataParser } from '../../src/task-metadata-parser';
-import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import { CacheCoordinator } from '../../src/cache/cache-coordinator';
+import { IdCache, DepCache } from '../../src/cache/marker-cache';
+import { MarkerScanner } from '../../src/parsing/marker-scanner';
+import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
+import { TaskParser } from '../../src/parsing/task-parser';
+import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
+import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
 import { TFile, TFolder } from 'obsidian';
 import type { TAbstractFile } from 'obsidian';
 
@@ -33,9 +34,9 @@ describe('CacheCoordinator', () => {
 	}
 
 	beforeEach(() => {
-		const idEngine = new IdEngine();
-		idCache = new IdCache(idEngine);
-		depCache = new DepCache(idEngine);
+		const scanner = new MarkerScanner();
+		idCache = new IdCache(scanner);
+		depCache = new DepCache(scanner);
 		const parser = new TaskParser();
 		const metadataParser = new TaskMetadataParser();
 		const relAnalyzer = new RelationshipAnalyzer(parser);

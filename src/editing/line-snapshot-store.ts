@@ -12,8 +12,8 @@
  * policy lives entirely in {@link LineWriteArbiter}.
  */
 
-import { MarkerAccessorRegistry, MarkerType } from './marker-accessor';
-import type { LineEditor } from './types';
+import { MarkerAccessorRegistry, MarkerType } from '../parsing/marker-accessor';
+import type { LineEditor } from '../types';
 
 export interface LineSnapshot {
 	readonly bareText: string;

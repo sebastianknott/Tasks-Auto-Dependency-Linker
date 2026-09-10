@@ -1,7 +1,7 @@
 import type { Plugin, TFile } from 'obsidian';
-import type { CacheCoordinator } from './cache-coordinator';
-import type { LineWriteArbiter } from './line-write-arbiter';
-import type { Debounce } from './utils';
+import type { CacheCoordinator } from '../cache/cache-coordinator';
+import type { LineWriteArbiter } from '../editing/line-write-arbiter';
+import type { Debounce } from '../utils';
 import type { CursorLineWatcher } from './cursor-line-watcher';
 
 /**

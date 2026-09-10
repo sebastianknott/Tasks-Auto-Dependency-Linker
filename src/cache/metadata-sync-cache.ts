@@ -10,10 +10,10 @@
  * id and dependency caches.
  */
 
-import type { FileEntry } from './id-engine';
-import type { RelationshipAnalyzer } from './relationship-analyzer';
-import type { TaskParser } from './task-parser';
-import type { Priority, TaskMetadataParser } from './task-metadata-parser';
+import type { FileEntry } from '../types';
+import type { RelationshipAnalyzer } from '../parsing/relationship-analyzer';
+import type { TaskParser } from '../parsing/task-parser';
+import type { Priority, TaskMetadataParser } from '../parsing/task-metadata-parser';
 
 /** The set of metadata fields tracked for inheritance. */
 export type MetadataField = 'due' | 'scheduled' | 'priority';

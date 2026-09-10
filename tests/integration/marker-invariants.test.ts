@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { MarkerAccessorRegistry, MarkerType } from '../../src/marker-accessor';
-import { TaskParser } from '../../src/task-parser';
-import { TaskMetadataParser } from '../../src/task-metadata-parser';
-import { LineSnapshotStore } from '../../src/line-snapshot-store';
+import { MarkerAccessorRegistry, MarkerType } from '../../src/parsing/marker-accessor';
+import { TaskParser } from '../../src/parsing/task-parser';
+import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
+import { LineSnapshotStore } from '../../src/editing/line-snapshot-store';
 
 /**
- * Hardening test suite for the marker accessors and LineSnapshotStore, built from a mentor
+ * Hardening test suite for the marker accessors and LineSnapshotStore, built from a design
  * review of LineWriteArbiter. The historical bug this suite targets: an earlier version of
  * LineSnapshotStore.computeBareText left a stray bare dependency glyph in the bare text,
  * which broke the arbiter's snapshot comparison gate and let the plugin restore a dependency

@@ -9,7 +9,7 @@
  * selection afterwards so the caret stays where the user left it.
  */
 
-import type { EditorLike, EditorPositionLike, LineEditor } from './types';
+import type { EditorLike, EditorPositionLike, LineEditor } from '../types';
 
 export class CursorGuard implements LineEditor {
 	private readonly editor: EditorLike;

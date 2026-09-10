@@ -1,15 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EditorProcessor } from '../../src/editor-processor';
-import { IndentationHandler } from '../../src/indentation-handler';
-import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import { EditorProcessor } from '../../src/processing/editor-processor';
+import { LinkPass } from '../../src/processing/link-pass';
+import { CleanupPass } from '../../src/processing/cleanup-pass';
+import { TaskLinker } from '../../src/linking/task-linker';
+import { DependencyCleaner } from '../../src/linking/dependency-cleaner';
+import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
 import type { MarkerCacheLike } from '../../src/types';
-import { TaskParser } from '../../src/task-parser';
-import { IdEngine } from '../../src/id-engine';
-import { TaskMetadataParser } from '../../src/task-metadata-parser';
-import { MetadataSyncCache } from '../../src/metadata-sync-cache';
-import { MetadataInheritor } from '../../src/metadata-inheritor';
-import { LineWriteArbiter } from '../../src/line-write-arbiter';
-import { MarkerAccessorRegistry } from '../../src/marker-accessor';
+import { TaskParser } from '../../src/parsing/task-parser';
+import { IdGenerator } from '../../src/linking/id-generator';
+import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
+import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
+import { MetadataInheritor } from '../../src/linking/metadata-inheritor';
+import { LineWriteArbiter } from '../../src/editing/line-write-arbiter';
+import { MarkerAccessorRegistry } from '../../src/parsing/marker-accessor';
 import { createEditor } from '../fixtures/editor';
 
 function createIdCache(ids: Set<string>, excludedIds?: Set<string>): MarkerCacheLike {
@@ -26,37 +29,37 @@ function createDepCache(deps?: Set<string>): MarkerCacheLike {
 	};
 }
 
-/** Creates a standard test processor with handler, caches, and mock editor. */
+/** Creates a standard test processor with linker, cleaner, caches, and mock editor. */
 function createTestProcessor(
 	lines: string[],
 	existingIds?: Set<string>,
 	options?: { vaultDepIds?: Set<string>; excludedIds?: Set<string>; arbiter?: LineWriteArbiter },
 ) {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
-	const idEngine = new IdEngine();
+	const idGenerator = new IdGenerator();
 	const relAnalyzer = new RelationshipAnalyzer(parser);
 	const metadataParser = new TaskMetadataParser();
 	const registry = new MarkerAccessorRegistry(parser, metadataParser);
-	const handler = new IndentationHandler(
+	const linker = new TaskLinker(
 		parser,
-		idEngine,
+		idGenerator,
 		relAnalyzer,
 		new MetadataInheritor(
 			registry,
 			new MetadataSyncCache(parser, metadataParser, relAnalyzer),
 		),
 	);
+	const cleaner = new DependencyCleaner(parser);
 	const arbiter = options?.arbiter ?? new LineWriteArbiter(registry);
+	const idCache = createIdCache(existingIds ?? new Set<string>(), options?.excludedIds);
+	const depCache = createDepCache(options?.vaultDepIds);
 	const processor = new EditorProcessor(
-		handler,
-		parser,
-		relAnalyzer,
-		createIdCache(existingIds ?? new Set<string>(), options?.excludedIds),
-		createDepCache(options?.vaultDepIds),
+		new LinkPass(linker, parser, idCache, arbiter),
+		new CleanupPass(cleaner, parser, relAnalyzer, idCache, depCache, arbiter),
 		arbiter,
 	);
 	const editor = createEditor(lines);
-	return { parser, handler, processor, editor, lines, arbiter, idEngine };
+	return { parser, linker, cleaner, processor, editor, lines, arbiter, idGenerator };
 }
 
 describe('EditorProcessor', () => {
@@ -142,7 +145,7 @@ describe('EditorProcessor', () => {
 	});
 
 	it('adds a freshly minted id to the pass-local existingIds set so a colliding sibling retries instead of reusing it', () => {
-		const { parser, processor, editor, lines, idEngine } = createTestProcessor([
+		const { parser, processor, editor, lines, idGenerator } = createTestProcessor([
 			'- [ ] Parent',
 			'\t- [ ] Child A',
 			'\t- [ ] Child B',
@@ -151,7 +154,7 @@ describe('EditorProcessor', () => {
 		// If the newly minted id for Child A is never recorded in the
 		// pass-local existingIds set, generateUniqueId sees no collision
 		// for Child B and both children end up with the identical id.
-		const spy = vi.spyOn(idEngine, 'generateId');
+		const spy = vi.spyOn(idGenerator, 'generateId');
 		spy.mockReturnValueOnce('sameid');
 		spy.mockReturnValueOnce('sameid');
 		spy.mockReturnValueOnce('other1');
@@ -170,12 +173,12 @@ describe('EditorProcessor', () => {
 	});
 
 	it('calls processLine exactly lineCount times', () => {
-		const { handler, processor, editor } = createTestProcessor([
+		const { linker, processor, editor } = createTestProcessor([
 			'- [ ] Task A',
 			'- [ ] Task B',
 			'\t- [ ] Task C',
 		]);
-		const spy = vi.spyOn(handler, 'processLine');
+		const spy = vi.spyOn(linker, 'processLine');
 
 		processor.processAllLines(editor, '');
 
@@ -302,23 +305,30 @@ describe('EditorProcessor', () => {
 
 		it('README example: multi-level re-parent with spaces indentation', () => {
 			const spaceParser = new TaskParser({ useTab: false, tabSize: 4 });
-			const idEngine = new IdEngine();
+			const idGenerator = new IdGenerator();
 			const spaceRelAnalyzer = new RelationshipAnalyzer(spaceParser);
 			const spaceMetadataParser = new TaskMetadataParser();
 			const spaceRegistry = new MarkerAccessorRegistry(spaceParser, spaceMetadataParser);
-			const handler = new IndentationHandler(
+			const linker = new TaskLinker(
 				spaceParser,
-				idEngine,
+				idGenerator,
 				spaceRelAnalyzer,
 				new MetadataInheritor(
 					spaceRegistry,
 					new MetadataSyncCache(spaceParser, spaceMetadataParser, spaceRelAnalyzer),
 				),
 			);
+			const spaceCleaner = new DependencyCleaner(spaceParser);
 			const existingIds = new Set(['abc444', 'abc123']);
 			const spaceArbiter = new LineWriteArbiter(spaceRegistry);
+			const spaceIdCache = createIdCache(existingIds);
+			const spaceDepCache = createDepCache();
 			const processor = new EditorProcessor(
-				handler, spaceParser, spaceRelAnalyzer, createIdCache(existingIds), createDepCache(),
+				new LinkPass(linker, spaceParser, spaceIdCache, spaceArbiter),
+				new CleanupPass(
+					spaceCleaner, spaceParser, spaceRelAnalyzer,
+					spaceIdCache, spaceDepCache, spaceArbiter,
+				),
 				spaceArbiter,
 			);
 
@@ -595,14 +605,14 @@ describe('EditorProcessor', () => {
 				new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser()),
 			);
 			const lines = ['- [ ] Parent \u26D4 abc123', '\t- [ ] Child \u{1F194} abc123'];
-			const { processor, handler, editor } = createTestProcessor(
+			const { processor, linker, editor } = createTestProcessor(
 				lines, new Set(['abc123']), { arbiter },
 			);
 			processor.processAllLines(editor, '');
 
 			lines[1] = '\t- [ ] Child';
 			const editor2 = createEditor(lines, { line: 1, ch: 6 });
-			const spy = vi.spyOn(handler, 'processLine');
+			const spy = vi.spyOn(linker, 'processLine');
 			processor.processAllLines(editor2, '');
 
 			expect(spy).not.toHaveBeenCalledWith(expect.anything(), 1, expect.anything());
@@ -742,7 +752,7 @@ describe('EditorProcessor', () => {
 				new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser()),
 			);
 			const lines = ['- [ ] Parent \u26D4 abc123', '\t- [ ] Child \u{1F194} abc123'];
-			const { processor, handler, editor } = createTestProcessor(
+			const { processor, linker, editor } = createTestProcessor(
 				lines, new Set(['abc123']), { arbiter },
 			);
 			processor.processAllLines(editor, '');
@@ -756,7 +766,7 @@ describe('EditorProcessor', () => {
 			// from the line's own content.
 			lines[1] = '\t- [ ] Child \u{1F194}';
 			const editor2 = createEditor(lines, { line: 1, ch: 14 });
-			const spy = vi.spyOn(handler, 'processLine');
+			const spy = vi.spyOn(linker, 'processLine');
 			processor.processAllLines(editor2, '');
 
 			expect(spy).not.toHaveBeenCalledWith(expect.anything(), 1, expect.anything());
@@ -1025,7 +1035,7 @@ describe('EditorProcessor', () => {
 	});
 });
 
-// Hardening suite from a mentor review of LineWriteArbiter. This is the higher-value
+// Hardening suite from a design review of LineWriteArbiter. This is the higher-value
 // integration counterpart to the pure-function invariants in tests/marker-invariants.test.ts:
 // it runs a full EditorProcessor.processAllLines pass, with the cursor sitting on a line mid
 // character-by-character deletion, and checks the exact class of corruption that the

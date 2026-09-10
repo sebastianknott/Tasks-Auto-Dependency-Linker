@@ -44,11 +44,19 @@
  * than reconciled, and `endPass` keeps the last well-formed snapshot
  * for that line instead of overwriting it with the fragment, so
  * suppression still engages correctly once the edit finishes.
+ *
+ * The comparison itself lives in {@link SuppressionDetector}, which
+ * reads one pass and reports what it saw, and the rewriting of an
+ * individual proposal lives in {@link ProposalReconciler}. This class
+ * decides what to do about it: how long suppression lasts, when it
+ * rotates, and which writes get refused.
  */
 
-import { MarkerAccessorRegistry, MarkerType } from './marker-accessor';
-import { LineSnapshotStore, type LineSnapshot } from './line-snapshot-store';
-import type { LineEditor } from './types';
+import { MarkerAccessorRegistry, MarkerType } from '../parsing/marker-accessor';
+import { LineSnapshotStore } from './line-snapshot-store';
+import { SuppressionDetector } from './suppression-detector';
+import { ProposalReconciler, type CursorLineState } from './proposal-reconciler';
+import type { LineEditor } from '../types';
 
 export class LineWriteArbiter implements LineEditor {
 	private target!: LineEditor;
@@ -76,23 +84,27 @@ export class LineWriteArbiter implements LineEditor {
 	 * verification is evidence for this pass only and must never persist
 	 * across passes the way suppression does.
 	 */
-	private verifiedTypes = new Set<MarkerType>();
-	private verifiedDepIds = new Set<string>();
+	private verifiedTypes: ReadonlySet<MarkerType> = new Set();
+	private verifiedDepIds: ReadonlySet<string> = new Set();
 
 	constructor(
-		private readonly registry: MarkerAccessorRegistry,
+		registry: MarkerAccessorRegistry,
 		private readonly snapshotStore: LineSnapshotStore = new LineSnapshotStore(registry),
+		private readonly detector: SuppressionDetector = new SuppressionDetector(registry, snapshotStore),
+		private readonly reconciler: ProposalReconciler = new ProposalReconciler(registry),
 	) {}
 
 	/**
 	 * Called at the start of every pass. Rotates suppression state when
-	 * the file or cursor line changed, then re-derives suppression and
-	 * verification for the current cursor line from the snapshot taken
-	 * at the end of the previous pass.
+	 * the file or cursor line changed, then folds in what the
+	 * {@link SuppressionDetector} read off the cursor line this pass.
+	 *
+	 * Suppression accumulates: every marker the user removed while the
+	 * caret stayed on this line stays suppressed. Verification does not,
+	 * because it is evidence about this pass alone and must never carry
+	 * over to a pass that did not re-establish it.
 	 */
 	beginPass(target: LineEditor, cursorLine: number, filePath: string): void {
-		this.verifiedTypes = new Set();
-		this.verifiedDepIds = new Set();
 		this.target = target;
 		if (filePath !== this.filePath) {
 			this.filePath = filePath;
@@ -104,75 +116,15 @@ export class LineWriteArbiter implements LineEditor {
 			this.suppressedDepIds = new Set();
 		}
 		this.cursorLine = cursorLine;
-		this.cursorLineIndeterminate = this.computeIndeterminate();
-		this.detectSuppression();
-	}
-
-	private detectSuppression(): void {
-		if (this.cursorLine >= this.target.lineCount()) {
-			return;
+		const observation = this.detector.observe(target, cursorLine);
+		this.cursorLineIndeterminate = observation.indeterminate;
+		this.verifiedTypes = observation.verifiedTypes;
+		this.verifiedDepIds = observation.verifiedDepIds;
+		for (const type of observation.newlySuppressedTypes) {
+			this.suppressedTypes.add(type);
 		}
-		const prior = this.snapshotStore.get(this.cursorLine);
-		if (!prior) {
-			return;
-		}
-		const currentLine = this.target.getLine(this.cursorLine);
-		if (prior.bareText !== this.snapshotStore.computeBareText(currentLine)) {
-			return;
-		}
-		this.detectSuppressedMarkers(prior, currentLine);
-		this.detectSuppressedDeps(prior, currentLine);
-	}
-
-
-	/**
-	 * True when the cursor line carries a glyph for some marker type
-	 * (single-value or dependency) whose value does not fully parse.
-	 * Computed fresh from the line's raw content on every pass, so it
-	 * catches a mid-edit marker on the very first pass that sees it,
-	 * without needing a prior snapshot to compare against.
-	 */
-	private computeIndeterminate(): boolean {
-		if (this.cursorLine < 0 || this.cursorLine >= this.target.lineCount()) {
-			return false;
-		}
-		const line = this.target.getLine(this.cursorLine);
-		return (
-			this.registry.markers.some((accessor) => accessor.hasFragment(line)) ||
-			this.registry.dependency.hasFragment(line)
-		);
-	}
-
-	/**
-	 * A marker whose value changed since the prior snapshot is suppressed;
-	 * one whose value is unchanged is verified as untouched instead. Both
-	 * sets are consulted by the correction methods below, which always
-	 * check suppression first and never look at verification once
-	 * suppression already applies, so a marker cannot land in both sets
-	 * with any observable effect.
-	 */
-	private detectSuppressedMarkers(prior: LineSnapshot, currentLine: string): void {
-		for (const accessor of this.registry.markers) {
-			const priorValue = prior.markers.get(accessor.type) ?? null;
-			if (priorValue === null) {
-				continue;
-			}
-			if (accessor.read(currentLine) !== priorValue) {
-				this.suppressedTypes.add(accessor.type);
-			} else {
-				this.verifiedTypes.add(accessor.type);
-			}
-		}
-	}
-
-	private detectSuppressedDeps(prior: LineSnapshot, currentLine: string): void {
-		const currentDeps = this.registry.dependency.read(currentLine);
-		for (const depId of prior.deps) {
-			if (!currentDeps.has(depId)) {
-				this.suppressedDepIds.add(depId);
-			} else {
-				this.verifiedDepIds.add(depId);
-			}
+		for (const depId of observation.newlySuppressedDepIds) {
+			this.suppressedDepIds.add(depId);
 		}
 	}
 
@@ -192,7 +144,7 @@ export class LineWriteArbiter implements LineEditor {
 		if (this.cursorLineIndeterminate) {
 			return current;
 		}
-		const corrected = this.correctProposal(current, proposedText);
+		const corrected = this.reconciler.reconcile(current, proposedText, this.cursorLineState());
 		if (corrected === current) {
 			return current;
 		}
@@ -200,64 +152,17 @@ export class LineWriteArbiter implements LineEditor {
 	}
 
 	/**
-	 * Reconciles a proposed line against the current one, marker by
-	 * marker: a suppressed marker is always frozen at its current value.
-	 * A proposed removal that is not suppressed is blocked too, unless
-	 * this pass positively verified the marker as untouched by the user
-	 * (see {@link verifiedTypes}), in which case the removal is allowed
-	 * to stand, e.g. a cleanup pass dropping an id that just became
-	 * orphaned on the line the caret happens to sit on.
+	 * Bundles the four sets the {@link ProposalReconciler} reads. Built
+	 * per call rather than held as a field, so the reconciler can never
+	 * see a set that has moved on since the arbiter handed it over.
 	 */
-	private correctProposal(current: string, proposed: string): string {
-		let corrected = proposed;
-		for (const accessor of this.registry.markers) {
-			const currentValue = accessor.read(current);
-			const blocked = accessor.read(proposed) === null && !this.verifiedTypes.has(accessor.type);
-			if (this.suppressedTypes.has(accessor.type) || blocked) {
-				corrected =
-					currentValue === null
-						? accessor.remove(corrected)
-						: accessor.apply(corrected, currentValue);
-			}
-		}
-		return this.correctDeps(current, proposed, corrected);
-	}
-
-	private correctDeps(current: string, proposed: string, corrected: string): string {
-		const currentDeps = this.registry.dependency.read(current);
-		const proposedDeps = this.registry.dependency.read(proposed);
-		const ids = new Set<string>([...currentDeps, ...proposedDeps, ...this.suppressedDepIds]);
-		let result = corrected;
-		for (const depId of ids) {
-			const currentHas = currentDeps.has(depId);
-			const dropsIt = currentHas && !proposedDeps.has(depId);
-			const desired = this.desiredDepPresence(depId, currentHas, dropsIt);
-			const has = this.registry.dependency.read(result).has(depId);
-			if (desired && !has) {
-				result = this.registry.dependency.apply(result, depId);
-			} else if (!desired && has) {
-				result = this.registry.dependency.remove(result, depId);
-			}
-		}
-		return result;
-	}
-
-	/**
-	 * A suppressed id is always frozen at its current presence. Otherwise,
-	 * a removal proposed by a cleanup pass is blocked unless this pass
-	 * positively verified the id as an untouched carry-over from the
-	 * prior snapshot (see {@link verifiedDepIds}). Anything else feeding
-	 * the id set this is called against (an add, or a keep) is always
-	 * meant to be present here.
-	 */
-	private desiredDepPresence(depId: string, currentHas: boolean, proposalDropsIt: boolean): boolean {
-		if (this.suppressedDepIds.has(depId)) {
-			return currentHas;
-		}
-		if (proposalDropsIt) {
-			return !this.verifiedDepIds.has(depId);
-		}
-		return true;
+	private cursorLineState(): CursorLineState {
+		return {
+			suppressedTypes: this.suppressedTypes,
+			suppressedDepIds: this.suppressedDepIds,
+			verifiedTypes: this.verifiedTypes,
+			verifiedDepIds: this.verifiedDepIds,
+		};
 	}
 
 	/** Rebuilds the whole-document snapshot from the pass that just ran. */
@@ -283,6 +188,28 @@ export class LineWriteArbiter implements LineEditor {
 
 	isSuppressed(lineIndex: number, type: MarkerType): boolean {
 		return lineIndex === this.cursorLine && this.suppressedTypes.has(type);
+	}
+
+	/**
+	 * True when a link pass must not mint a fresh `\u{1F194}` for the given
+	 * line, because the user is either mid-edit on it or has already
+	 * removed its id by hand.
+	 *
+	 * The arbiter answers this instead of the caller assembling it from
+	 * {@link isSuppressed} and {@link isIndeterminate}, because the rule
+	 * is arbiter policy: which two states block minting, and that both
+	 * only apply to the cursor line. A caller that rebuilt it would have
+	 * to know the `lineIndex === cursorLine` guard as well, and would
+	 * silently block every line in the document the day it forgot.
+	 *
+	 * Minting is the specific thing being refused. It happens before
+	 * `setLine` is ever reached, and {@link TaskLinker.processLine}
+	 * writes the freshly minted id onto the *parent* line, which the
+	 * arbiter never inspects. Refusing after the fact is therefore too
+	 * late, which is why this query exists at all.
+	 */
+	blocksIdMinting(lineIndex: number): boolean {
+		return this.isSuppressed(lineIndex, MarkerType.Id) || this.isIndeterminate(lineIndex);
 	}
 
 
