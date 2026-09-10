@@ -46,14 +46,16 @@
  * suppression still engages correctly once the edit finishes.
  *
  * The comparison itself lives in {@link SuppressionDetector}, which
- * reads one pass and reports what it saw. This class decides what to
- * do about it: how long suppression lasts, when it rotates, and which
- * writes get refused.
+ * reads one pass and reports what it saw, and the rewriting of an
+ * individual proposal lives in {@link ProposalReconciler}. This class
+ * decides what to do about it: how long suppression lasts, when it
+ * rotates, and which writes get refused.
  */
 
 import { MarkerAccessorRegistry, MarkerType } from '../parsing/marker-accessor';
 import { LineSnapshotStore } from './line-snapshot-store';
 import { SuppressionDetector } from './suppression-detector';
+import { ProposalReconciler, type CursorLineState } from './proposal-reconciler';
 import type { LineEditor } from '../types';
 
 export class LineWriteArbiter implements LineEditor {
@@ -86,9 +88,10 @@ export class LineWriteArbiter implements LineEditor {
 	private verifiedDepIds: ReadonlySet<string> = new Set();
 
 	constructor(
-		private readonly registry: MarkerAccessorRegistry,
+		registry: MarkerAccessorRegistry,
 		private readonly snapshotStore: LineSnapshotStore = new LineSnapshotStore(registry),
 		private readonly detector: SuppressionDetector = new SuppressionDetector(registry, snapshotStore),
+		private readonly reconciler: ProposalReconciler = new ProposalReconciler(registry),
 	) {}
 
 	/**
@@ -141,7 +144,7 @@ export class LineWriteArbiter implements LineEditor {
 		if (this.cursorLineIndeterminate) {
 			return current;
 		}
-		const corrected = this.correctProposal(current, proposedText);
+		const corrected = this.reconciler.reconcile(current, proposedText, this.cursorLineState());
 		if (corrected === current) {
 			return current;
 		}
@@ -149,64 +152,17 @@ export class LineWriteArbiter implements LineEditor {
 	}
 
 	/**
-	 * Reconciles a proposed line against the current one, marker by
-	 * marker: a suppressed marker is always frozen at its current value.
-	 * A proposed removal that is not suppressed is blocked too, unless
-	 * this pass positively verified the marker as untouched by the user
-	 * (see {@link verifiedTypes}), in which case the removal is allowed
-	 * to stand, e.g. a cleanup pass dropping an id that just became
-	 * orphaned on the line the caret happens to sit on.
+	 * Bundles the four sets the {@link ProposalReconciler} reads. Built
+	 * per call rather than held as a field, so the reconciler can never
+	 * see a set that has moved on since the arbiter handed it over.
 	 */
-	private correctProposal(current: string, proposed: string): string {
-		let corrected = proposed;
-		for (const accessor of this.registry.markers) {
-			const currentValue = accessor.read(current);
-			const blocked = accessor.read(proposed) === null && !this.verifiedTypes.has(accessor.type);
-			if (this.suppressedTypes.has(accessor.type) || blocked) {
-				corrected =
-					currentValue === null
-						? accessor.remove(corrected)
-						: accessor.apply(corrected, currentValue);
-			}
-		}
-		return this.correctDeps(current, proposed, corrected);
-	}
-
-	private correctDeps(current: string, proposed: string, corrected: string): string {
-		const currentDeps = this.registry.dependency.read(current);
-		const proposedDeps = this.registry.dependency.read(proposed);
-		const ids = new Set<string>([...currentDeps, ...proposedDeps, ...this.suppressedDepIds]);
-		let result = corrected;
-		for (const depId of ids) {
-			const currentHas = currentDeps.has(depId);
-			const dropsIt = currentHas && !proposedDeps.has(depId);
-			const desired = this.desiredDepPresence(depId, currentHas, dropsIt);
-			const has = this.registry.dependency.read(result).has(depId);
-			if (desired && !has) {
-				result = this.registry.dependency.apply(result, depId);
-			} else if (!desired && has) {
-				result = this.registry.dependency.remove(result, depId);
-			}
-		}
-		return result;
-	}
-
-	/**
-	 * A suppressed id is always frozen at its current presence. Otherwise,
-	 * a removal proposed by a cleanup pass is blocked unless this pass
-	 * positively verified the id as an untouched carry-over from the
-	 * prior snapshot (see {@link verifiedDepIds}). Anything else feeding
-	 * the id set this is called against (an add, or a keep) is always
-	 * meant to be present here.
-	 */
-	private desiredDepPresence(depId: string, currentHas: boolean, proposalDropsIt: boolean): boolean {
-		if (this.suppressedDepIds.has(depId)) {
-			return currentHas;
-		}
-		if (proposalDropsIt) {
-			return !this.verifiedDepIds.has(depId);
-		}
-		return true;
+	private cursorLineState(): CursorLineState {
+		return {
+			suppressedTypes: this.suppressedTypes,
+			suppressedDepIds: this.suppressedDepIds,
+			verifiedTypes: this.verifiedTypes,
+			verifiedDepIds: this.verifiedDepIds,
+		};
 	}
 
 	/** Rebuilds the whole-document snapshot from the pass that just ran. */
