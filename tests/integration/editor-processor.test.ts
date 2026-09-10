@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EditorProcessor } from '../../src/processing/editor-processor';
+import { LinkPass } from '../../src/processing/link-pass';
+import { CleanupPass } from '../../src/processing/cleanup-pass';
 import { TaskLinker } from '../../src/linking/task-linker';
 import { DependencyCleaner } from '../../src/linking/dependency-cleaner';
 import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
@@ -49,13 +51,11 @@ function createTestProcessor(
 	);
 	const cleaner = new DependencyCleaner(parser);
 	const arbiter = options?.arbiter ?? new LineWriteArbiter(registry);
+	const idCache = createIdCache(existingIds ?? new Set<string>(), options?.excludedIds);
+	const depCache = createDepCache(options?.vaultDepIds);
 	const processor = new EditorProcessor(
-		linker,
-		cleaner,
-		parser,
-		relAnalyzer,
-		createIdCache(existingIds ?? new Set<string>(), options?.excludedIds),
-		createDepCache(options?.vaultDepIds),
+		new LinkPass(linker, parser, idCache, arbiter),
+		new CleanupPass(cleaner, parser, relAnalyzer, idCache, depCache, arbiter),
 		arbiter,
 	);
 	const editor = createEditor(lines);
@@ -321,8 +321,14 @@ describe('EditorProcessor', () => {
 			const spaceCleaner = new DependencyCleaner(spaceParser);
 			const existingIds = new Set(['abc444', 'abc123']);
 			const spaceArbiter = new LineWriteArbiter(spaceRegistry);
+			const spaceIdCache = createIdCache(existingIds);
+			const spaceDepCache = createDepCache();
 			const processor = new EditorProcessor(
-				linker, spaceCleaner, spaceParser, spaceRelAnalyzer, createIdCache(existingIds), createDepCache(),
+				new LinkPass(linker, spaceParser, spaceIdCache, spaceArbiter),
+				new CleanupPass(
+					spaceCleaner, spaceParser, spaceRelAnalyzer,
+					spaceIdCache, spaceDepCache, spaceArbiter,
+				),
 				spaceArbiter,
 			);
 

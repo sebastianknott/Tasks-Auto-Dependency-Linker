@@ -12,6 +12,8 @@ import { MetadataInheritor } from './linking/metadata-inheritor';
 import { TaskLinker } from './linking/task-linker';
 import { DependencyCleaner } from './linking/dependency-cleaner';
 import { EditorProcessor } from './processing/editor-processor';
+import { LinkPass } from './processing/link-pass';
+import { CleanupPass } from './processing/cleanup-pass';
 import { CacheCoordinator } from './cache/cache-coordinator';
 import { ObsidianEditorAdapter } from './obsidian/obsidian-editor-adapter';
 import { LineWriteArbiter } from './editing/line-write-arbiter';
@@ -90,8 +92,12 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		);
 		this.arbiter = new LineWriteArbiter(registry);
 		this.processor = new EditorProcessor(
-			linker, cleaner, parser, relAnalyzer,
-			this.idCache, this.depCache, this.arbiter,
+			new LinkPass(linker, parser, this.idCache, this.arbiter),
+			new CleanupPass(
+				cleaner, parser, relAnalyzer,
+				this.idCache, this.depCache, this.arbiter,
+			),
+			this.arbiter,
 		);
 		this.debounce = new Debounce(() => this.processActiveEditor());
 		this.watcher = new CursorLineWatcher(() => this.debounce.call());
