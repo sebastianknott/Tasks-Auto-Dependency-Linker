@@ -10,7 +10,7 @@
 
 import { TFile } from 'obsidian';
 import type { TAbstractFile } from 'obsidian';
-import type { IdCache, DepCache } from './id-engine';
+import type { IdCache, DepCache } from './marker-cache';
 import type { FileEntry } from '../types';
 import type { MetadataSyncCache } from './metadata-sync-cache';
 

@@ -2,11 +2,11 @@
  * Indentation-based dependency linking for the Tasks Auto-Dependency Linker.
  *
  * Detects parent-child relationships from indentation and automatically
- * adds `🆔` / `⛔` markers using {@link TaskParser} and {@link IdEngine}.
+ * adds `🆔` / `⛔` markers using {@link TaskParser} and {@link IdGenerator}.
  */
 
 import { TaskParser } from '../parsing/task-parser';
-import { IdEngine } from '../cache/id-engine';
+import { IdGenerator } from './id-generator';
 import type { RelationshipAnalyzer } from '../parsing/relationship-analyzer';
 import type { MetadataInheritor } from './metadata-inheritor';
 import type { LineEditor } from '../types';
@@ -14,26 +14,26 @@ import type { LineEditor } from '../types';
 /**
  * Processes indentation changes and manages task dependency markers.
  *
- * Instantiate with a {@link TaskParser}, {@link IdEngine},
+ * Instantiate with a {@link TaskParser}, {@link IdGenerator},
  * {@link RelationshipAnalyzer}, and {@link MetadataInheritor}, then call
  * {@link processLine} on each line that may have changed indentation.
  */
 export class IndentationHandler {
 	private readonly parser: TaskParser;
 	private readonly relAnalyzer: RelationshipAnalyzer;
-	private readonly idEngine: IdEngine;
+	private readonly idGenerator: IdGenerator;
 	private readonly inheritor: MetadataInheritor;
 	/** Snapshot of editor lines set once before each link pass. */
 	private snapshot: string[] = new Array<string>();
 
 	constructor(
 		parser: TaskParser,
-		idEngine: IdEngine,
+		idGenerator: IdGenerator,
 		relAnalyzer: RelationshipAnalyzer,
 		inheritor: MetadataInheritor,
 	) {
 		this.parser = parser;
-		this.idEngine = idEngine;
+		this.idGenerator = idGenerator;
 		this.relAnalyzer = relAnalyzer;
 		this.inheritor = inheritor;
 	}
@@ -99,7 +99,7 @@ export class IndentationHandler {
 		let childId = this.parser.getTaskId(childLine);
 		let mintedId: string | null = null;
 		if (!childId) {
-			childId = this.idEngine.generateUniqueId(existingIds);
+			childId = this.idGenerator.generateUniqueId(existingIds);
 			childLine = this.parser.addIdToLine(childLine, childId);
 			mintedId = childId;
 		}

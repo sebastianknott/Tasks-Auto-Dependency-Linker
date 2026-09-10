@@ -2,7 +2,9 @@ import { Plugin, MarkdownView } from 'obsidian';
 import type { Editor } from 'obsidian';
 import { TaskParser } from './parsing/task-parser';
 import type { IndentConfig } from './parsing/task-parser';
-import { IdEngine, IdCache, DepCache } from './cache/id-engine';
+import { IdCache, DepCache } from './cache/marker-cache';
+import { MarkerScanner } from './parsing/marker-scanner';
+import { IdGenerator } from './linking/id-generator';
 import { RelationshipAnalyzer } from './parsing/relationship-analyzer';
 import { TaskMetadataParser } from './parsing/task-metadata-parser';
 import { MetadataSyncCache } from './cache/metadata-sync-cache';
@@ -21,7 +23,7 @@ import { PluginTriggers } from './obsidian/plugin-triggers';
  * Tasks Auto-Dependency Linker plugin for Obsidian.
  *
  * Thin shell that wires Obsidian events to the extracted, testable classes.
- * All logic lives in TaskParser, IdEngine, IdCache, IndentationHandler,
+ * All logic lives in TaskParser, IdGenerator, IdCache, IndentationHandler,
  * EditorProcessor, CacheCoordinator, and Debounce.
  */
 export default class TasksAutoDependencyLinker extends Plugin {
@@ -68,18 +70,19 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		};
 
 		const parser = new TaskParser(indentConfig);
-		const idEngine = new IdEngine();
+		const scanner = new MarkerScanner();
+		const idGenerator = new IdGenerator();
 		const relAnalyzer = new RelationshipAnalyzer(parser);
 		const metadataParser = new TaskMetadataParser();
 		const registry = new MarkerAccessorRegistry(parser, metadataParser);
 		this.syncCache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
 		const inheritor = new MetadataInheritor(registry, this.syncCache);
 		const handler = new IndentationHandler(
-			parser, idEngine, relAnalyzer, inheritor,
+			parser, idGenerator, relAnalyzer, inheritor,
 		);
 
-		this.idCache = new IdCache(idEngine);
-		this.depCache = new DepCache(idEngine);
+		this.idCache = new IdCache(scanner);
+		this.depCache = new DepCache(scanner);
 		this.coordinator = new CacheCoordinator(
 			this.idCache, this.depCache, this.syncCache, this.app.vault,
 		);

@@ -4,7 +4,7 @@ import { IndentationHandler } from '../../src/linking/indentation-handler';
 import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
 import type { MarkerCacheLike } from '../../src/types';
 import { TaskParser } from '../../src/parsing/task-parser';
-import { IdEngine } from '../../src/cache/id-engine';
+import { IdGenerator } from '../../src/linking/id-generator';
 import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
 import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
 import { MetadataInheritor } from '../../src/linking/metadata-inheritor';
@@ -33,13 +33,13 @@ function createTestProcessor(
 	options?: { vaultDepIds?: Set<string>; excludedIds?: Set<string>; arbiter?: LineWriteArbiter },
 ) {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
-	const idEngine = new IdEngine();
+	const idGenerator = new IdGenerator();
 	const relAnalyzer = new RelationshipAnalyzer(parser);
 	const metadataParser = new TaskMetadataParser();
 	const registry = new MarkerAccessorRegistry(parser, metadataParser);
 	const handler = new IndentationHandler(
 		parser,
-		idEngine,
+		idGenerator,
 		relAnalyzer,
 		new MetadataInheritor(
 			registry,
@@ -56,7 +56,7 @@ function createTestProcessor(
 		arbiter,
 	);
 	const editor = createEditor(lines);
-	return { parser, handler, processor, editor, lines, arbiter, idEngine };
+	return { parser, handler, processor, editor, lines, arbiter, idGenerator };
 }
 
 describe('EditorProcessor', () => {
@@ -142,7 +142,7 @@ describe('EditorProcessor', () => {
 	});
 
 	it('adds a freshly minted id to the pass-local existingIds set so a colliding sibling retries instead of reusing it', () => {
-		const { parser, processor, editor, lines, idEngine } = createTestProcessor([
+		const { parser, processor, editor, lines, idGenerator } = createTestProcessor([
 			'- [ ] Parent',
 			'\t- [ ] Child A',
 			'\t- [ ] Child B',
@@ -151,7 +151,7 @@ describe('EditorProcessor', () => {
 		// If the newly minted id for Child A is never recorded in the
 		// pass-local existingIds set, generateUniqueId sees no collision
 		// for Child B and both children end up with the identical id.
-		const spy = vi.spyOn(idEngine, 'generateId');
+		const spy = vi.spyOn(idGenerator, 'generateId');
 		spy.mockReturnValueOnce('sameid');
 		spy.mockReturnValueOnce('sameid');
 		spy.mockReturnValueOnce('other1');
@@ -302,13 +302,13 @@ describe('EditorProcessor', () => {
 
 		it('README example: multi-level re-parent with spaces indentation', () => {
 			const spaceParser = new TaskParser({ useTab: false, tabSize: 4 });
-			const idEngine = new IdEngine();
+			const idGenerator = new IdGenerator();
 			const spaceRelAnalyzer = new RelationshipAnalyzer(spaceParser);
 			const spaceMetadataParser = new TaskMetadataParser();
 			const spaceRegistry = new MarkerAccessorRegistry(spaceParser, spaceMetadataParser);
 			const handler = new IndentationHandler(
 				spaceParser,
-				idEngine,
+				idGenerator,
 				spaceRelAnalyzer,
 				new MetadataInheritor(
 					spaceRegistry,

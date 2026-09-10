@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { IndentationHandler } from '../../src/linking/indentation-handler';
 import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
 import { TaskParser } from '../../src/parsing/task-parser';
-import { IdEngine } from '../../src/cache/id-engine';
+import { IdGenerator } from '../../src/linking/id-generator';
 import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
 import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
 import { MetadataInheritor } from '../../src/linking/metadata-inheritor';
@@ -15,7 +15,7 @@ import {
 
 describe('IndentationHandler', () => {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
-	const idEngine = new IdEngine();
+	const idGenerator = new IdGenerator();
 	const relAnalyzer = new RelationshipAnalyzer(parser);
 	const metadataParser = new TaskMetadataParser();
 	const syncCache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
@@ -23,7 +23,7 @@ describe('IndentationHandler', () => {
 	const inheritor = new MetadataInheritor(registry, syncCache);
 
 	function createHandler(): IndentationHandler {
-		return new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+		return new IndentationHandler(parser, idGenerator, relAnalyzer, inheritor);
 	}
 
 	describe('removeStaleDeps', () => {
@@ -53,7 +53,7 @@ describe('IndentationHandler', () => {
 				'- [ ] Parent',
 			],
 		])('%s', (_description, line, desiredSet, expected) => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = new IndentationHandler(parser, idGenerator, relAnalyzer, inheritor);
 			expect(handler.removeStaleDeps(line, desiredSet)).toBe(expected);
 		});
 	});
@@ -85,7 +85,7 @@ describe('IndentationHandler', () => {
 				true,
 			],
 		])('%s', (_description, lines, id, expected) => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = new IndentationHandler(parser, idGenerator, relAnalyzer, inheritor);
 			expect(handler.isIdReferencedAsDep(lines, id)).toBe(expected);
 		});
 	});
@@ -395,7 +395,7 @@ describe('IndentationHandler', () => {
 			cache.buildFromFiles([{ path: 'a.md', content: priorContent }]);
 			return new IndentationHandler(
 				parser,
-				idEngine,
+				idGenerator,
 				relAnalyzer,
 				new MetadataInheritor(registry, cache),
 			);
@@ -510,7 +510,7 @@ describe('IndentationHandler', () => {
 		it('does not record the sync in the cache when the write is refused', () => {
 			const cache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
 			const localInheritor = new MetadataInheritor(registry, cache);
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, localInheritor);
+			const handler = new IndentationHandler(parser, idGenerator, relAnalyzer, localInheritor);
 			const childLine = '\t- [ ] Child \u{1F194} abc123';
 			const lines = ['- [ ] Parent \u{1F4C5} 2025-01-01', childLine];
 			const editor = createRefusingEditor(lines);
@@ -525,7 +525,7 @@ describe('IndentationHandler', () => {
 		it('records the sync in the cache when the write succeeds normally', () => {
 			const cache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
 			const localInheritor = new MetadataInheritor(registry, cache);
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, localInheritor);
+			const handler = new IndentationHandler(parser, idGenerator, relAnalyzer, localInheritor);
 			const lines = [
 				'- [ ] Parent \u{1F4C5} 2025-01-01',
 				'\t- [ ] Child \u{1F194} abc123',
@@ -542,7 +542,7 @@ describe('IndentationHandler', () => {
 
 	describe('Finding B: atomic parent-child linkage', () => {
 		it('abandons a freshly minted id and writes nothing when the parent refuses the link', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = new IndentationHandler(parser, idGenerator, relAnalyzer, inheritor);
 			const parentLine = '- [ ] Parent \u26D4 ,def456';
 			const childLine = '\t- [ ] Child';
 			const lines = [parentLine, childLine];
@@ -559,7 +559,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('stays a no-op across two consecutive passes while the parent stays indeterminate', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = new IndentationHandler(parser, idGenerator, relAnalyzer, inheritor);
 			const parentLine = '- [ ] Parent \u26D4 ,def456';
 			const childLine = '\t- [ ] Child';
 			const lines = [parentLine, childLine];
@@ -577,7 +577,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('CONTRAST: still runs metadata inheritance and writes the child when the child already had an id and the parent refuses', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = new IndentationHandler(parser, idGenerator, relAnalyzer, inheritor);
 			const parentLine = '- [ ] Parent \u{1F4C5} 2025-01-01';
 			const childLine = '\t- [ ] Child \u{1F194} abc123';
 			const lines = [parentLine, childLine];
@@ -599,7 +599,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('DISCRIMINATING: does not bail when the parent write lands the dependency but also carries an unrelated correction', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = new IndentationHandler(parser, idGenerator, relAnalyzer, inheritor);
 			const parentLine = '- [ ] Parent \u{1F4C5} 2025-01-01';
 			const childLine = '\t- [ ] Child';
 			const lines = [parentLine, childLine];
