@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EditorProcessor } from '../../src/editor-processor';
-import { IndentationHandler } from '../../src/indentation-handler';
-import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import { EditorProcessor } from '../../src/processing/editor-processor';
+import { IndentationHandler } from '../../src/linking/indentation-handler';
+import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
 import type { MarkerCacheLike } from '../../src/types';
-import { TaskParser } from '../../src/task-parser';
-import { IdEngine } from '../../src/id-engine';
-import { TaskMetadataParser } from '../../src/task-metadata-parser';
-import { MetadataSyncCache } from '../../src/metadata-sync-cache';
-import { MetadataInheritor } from '../../src/metadata-inheritor';
-import { LineWriteArbiter } from '../../src/line-write-arbiter';
-import { MarkerAccessorRegistry } from '../../src/marker-accessor';
+import { TaskParser } from '../../src/parsing/task-parser';
+import { IdEngine } from '../../src/cache/id-engine';
+import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
+import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
+import { MetadataInheritor } from '../../src/linking/metadata-inheritor';
+import { LineWriteArbiter } from '../../src/editing/line-write-arbiter';
+import { MarkerAccessorRegistry } from '../../src/parsing/marker-accessor';
 import { createEditor } from '../fixtures/editor';
 
 function createIdCache(ids: Set<string>, excludedIds?: Set<string>): MarkerCacheLike {

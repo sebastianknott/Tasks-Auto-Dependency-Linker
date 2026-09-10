@@ -46,9 +46,9 @@
  * suppression still engages correctly once the edit finishes.
  */
 
-import { MarkerAccessorRegistry, MarkerType } from './marker-accessor';
+import { MarkerAccessorRegistry, MarkerType } from '../parsing/marker-accessor';
 import { LineSnapshotStore, type LineSnapshot } from './line-snapshot-store';
-import type { LineEditor } from './types';
+import type { LineEditor } from '../types';
 
 export class LineWriteArbiter implements LineEditor {
 	private target!: LineEditor;

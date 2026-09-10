@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { IndentationHandler } from '../../src/indentation-handler';
-import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
-import { TaskParser } from '../../src/task-parser';
-import { IdEngine } from '../../src/id-engine';
-import { TaskMetadataParser } from '../../src/task-metadata-parser';
-import { MetadataSyncCache } from '../../src/metadata-sync-cache';
-import { MetadataInheritor } from '../../src/metadata-inheritor';
-import { MarkerAccessorRegistry } from '../../src/marker-accessor';
+import { IndentationHandler } from '../../src/linking/indentation-handler';
+import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
+import { TaskParser } from '../../src/parsing/task-parser';
+import { IdEngine } from '../../src/cache/id-engine';
+import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
+import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
+import { MetadataInheritor } from '../../src/linking/metadata-inheritor';
+import { MarkerAccessorRegistry } from '../../src/parsing/marker-accessor';
 import {
 	createCorrectingEditor,
 	createLineEditor,

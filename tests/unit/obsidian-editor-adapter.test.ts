@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import type { Editor } from 'obsidian';
-import { ObsidianEditorAdapter } from '../../src/obsidian-editor-adapter';
+import { ObsidianEditorAdapter } from '../../src/obsidian/obsidian-editor-adapter';
 import type { EditorPositionLike } from '../../src/types';
 
 /**

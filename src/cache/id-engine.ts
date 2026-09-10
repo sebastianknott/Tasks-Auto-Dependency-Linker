@@ -5,8 +5,8 @@
  * uniqueness by checking against a set of existing IDs.
  */
 
-import { TaskParser } from './task-parser';
-import type { FileEntry } from './types';
+import { TaskParser } from '../parsing/task-parser';
+import type { FileEntry } from '../types';
 
 /** Characters used for ID generation: a-z, 0-9. */
 const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';

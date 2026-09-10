@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { IdEngine, IdCache, DepCache, MarkerCache } from '../../src/id-engine';
+import { IdEngine, IdCache, DepCache, MarkerCache } from '../../src/cache/id-engine';
 import type { FileEntry } from '../../src/types';
 
 /**

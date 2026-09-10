@@ -5,11 +5,11 @@
  * adds `🆔` / `⛔` markers using {@link TaskParser} and {@link IdEngine}.
  */
 
-import { TaskParser } from './task-parser';
-import { IdEngine } from './id-engine';
-import type { RelationshipAnalyzer } from './relationship-analyzer';
+import { TaskParser } from '../parsing/task-parser';
+import { IdEngine } from '../cache/id-engine';
+import type { RelationshipAnalyzer } from '../parsing/relationship-analyzer';
 import type { MetadataInheritor } from './metadata-inheritor';
-import type { LineEditor } from './types';
+import type { LineEditor } from '../types';
 
 /**
  * Processes indentation changes and manages task dependency markers.

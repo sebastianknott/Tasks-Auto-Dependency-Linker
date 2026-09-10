@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { MetadataSyncCache } from '../../src/metadata-sync-cache';
-import { TaskParser } from '../../src/task-parser';
-import { TaskMetadataParser } from '../../src/task-metadata-parser';
-import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
+import { TaskParser } from '../../src/parsing/task-parser';
+import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
+import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
 
 describe('MetadataSyncCache', () => {
 	let cache: MetadataSyncCache;

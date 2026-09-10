@@ -1,21 +1,21 @@
 import { Plugin, MarkdownView } from 'obsidian';
 import type { Editor } from 'obsidian';
-import { TaskParser } from './task-parser';
-import type { IndentConfig } from './task-parser';
-import { IdEngine, IdCache, DepCache } from './id-engine';
-import { RelationshipAnalyzer } from './relationship-analyzer';
-import { TaskMetadataParser } from './task-metadata-parser';
-import { MetadataSyncCache } from './metadata-sync-cache';
-import { MetadataInheritor } from './metadata-inheritor';
-import { IndentationHandler } from './indentation-handler';
-import { EditorProcessor } from './editor-processor';
-import { CacheCoordinator } from './cache-coordinator';
-import { ObsidianEditorAdapter } from './obsidian-editor-adapter';
-import { LineWriteArbiter } from './line-write-arbiter';
-import { MarkerAccessorRegistry } from './marker-accessor';
+import { TaskParser } from './parsing/task-parser';
+import type { IndentConfig } from './parsing/task-parser';
+import { IdEngine, IdCache, DepCache } from './cache/id-engine';
+import { RelationshipAnalyzer } from './parsing/relationship-analyzer';
+import { TaskMetadataParser } from './parsing/task-metadata-parser';
+import { MetadataSyncCache } from './cache/metadata-sync-cache';
+import { MetadataInheritor } from './linking/metadata-inheritor';
+import { IndentationHandler } from './linking/indentation-handler';
+import { EditorProcessor } from './processing/editor-processor';
+import { CacheCoordinator } from './cache/cache-coordinator';
+import { ObsidianEditorAdapter } from './obsidian/obsidian-editor-adapter';
+import { LineWriteArbiter } from './editing/line-write-arbiter';
+import { MarkerAccessorRegistry } from './parsing/marker-accessor';
 import { Debounce } from './utils';
-import { CursorLineWatcher } from './cursor-line-watcher';
-import { PluginTriggers } from './plugin-triggers';
+import { CursorLineWatcher } from './obsidian/cursor-line-watcher';
+import { PluginTriggers } from './obsidian/plugin-triggers';
 
 /**
  * Tasks Auto-Dependency Linker plugin for Obsidian.

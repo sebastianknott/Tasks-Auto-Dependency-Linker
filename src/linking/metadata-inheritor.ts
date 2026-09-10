@@ -32,8 +32,8 @@
  * than replace the first. See {@link proposeField} for the guard.
  */
 
-import type { MarkerAccessor, MarkerAccessorRegistry, MarkerType } from './marker-accessor';
-import type { MetadataField, MetadataSyncCache } from './metadata-sync-cache';
+import type { MarkerAccessor, MarkerAccessorRegistry, MarkerType } from '../parsing/marker-accessor';
+import type { MetadataField, MetadataSyncCache } from '../cache/metadata-sync-cache';
 
 /** One field sync proposed by {@link MetadataInheritor.syncFromParent}, awaiting confirmation. */
 interface PendingSync {

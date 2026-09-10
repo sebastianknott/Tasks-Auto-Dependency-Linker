@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { LineWriteArbiter } from '../../src/line-write-arbiter';
-import { MarkerAccessorRegistry, MarkerType } from '../../src/marker-accessor';
-import { TaskParser } from '../../src/task-parser';
-import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { LineWriteArbiter } from '../../src/editing/line-write-arbiter';
+import { MarkerAccessorRegistry, MarkerType } from '../../src/parsing/marker-accessor';
+import { TaskParser } from '../../src/parsing/task-parser';
+import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
 import { createLineEditor } from '../fixtures/editor';
 
 function createArbiter(): LineWriteArbiter {

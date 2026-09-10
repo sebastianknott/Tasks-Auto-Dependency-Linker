@@ -9,7 +9,7 @@
  * safe and gives this the same contract as every other `LineEditor`.
  */
 import type { Editor } from 'obsidian';
-import type { EditorLike, EditorPositionLike } from './types';
+import type { EditorLike, EditorPositionLike } from '../types';
 
 export class ObsidianEditorAdapter implements EditorLike {
 	constructor(private readonly editor: Editor) {}

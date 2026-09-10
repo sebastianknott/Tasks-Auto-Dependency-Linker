@@ -5,13 +5,13 @@
  * within the FTA complexity budget.
  */
 
-import type { IndentationHandler } from './indentation-handler';
-import type { TaskParser } from './task-parser';
-import type { RelationshipAnalyzer } from './relationship-analyzer';
-import { CursorGuard } from './cursor-guard';
-import type { LineWriteArbiter } from './line-write-arbiter';
-import { MarkerType } from './marker-accessor';
-import type { EditorLike, LineEditor, MarkerCacheLike } from './types';
+import type { IndentationHandler } from '../linking/indentation-handler';
+import type { TaskParser } from '../parsing/task-parser';
+import type { RelationshipAnalyzer } from '../parsing/relationship-analyzer';
+import { CursorGuard } from '../editing/cursor-guard';
+import type { LineWriteArbiter } from '../editing/line-write-arbiter';
+import { MarkerType } from '../parsing/marker-accessor';
+import type { EditorLike, LineEditor, MarkerCacheLike } from '../types';
 
 /**
  * Orchestrates processing all lines in an editor.
