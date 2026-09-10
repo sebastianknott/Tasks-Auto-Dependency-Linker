@@ -11,7 +11,6 @@ import type { TaskParser } from '../parsing/task-parser';
 import type { RelationshipAnalyzer } from '../parsing/relationship-analyzer';
 import { CursorGuard } from '../editing/cursor-guard';
 import type { LineWriteArbiter } from '../editing/line-write-arbiter';
-import { MarkerType } from '../parsing/marker-accessor';
 import type { EditorLike, LineEditor, MarkerCacheLike } from '../types';
 
 /**
@@ -88,19 +87,13 @@ export class EditorProcessor {
 	 * Pass 1: Adds `🆔` / `⛔` link markers based on indentation,
 	 * then snapshots all editor lines into {@link lines}.
 	 *
-	 * Skips a line only when its `🆔` is currently absent *and* either
-	 * suppressed or the cursor line is mid-edit (a `🆔` glyph present
-	 * but not yet parseable, or a dependency list missing an id between
-	 * two commas). Letting `processLine` run in that state would mint a
-	 * fresh id and write it onto the *parent* line before the arbiter
-	 * ever sees the child's proposal, since
-	 * {@link TaskLinker.processLine} writes the parent first.
-	 * The arbiter's own `setLine` correction runs too late to undo that
-	 * write, since it only ever sees the *child's* proposal, not the
-	 * parent's. A suppressed id that is merely a *different* value, not
-	 * absent (the user renamed it by hand), must still run through
-	 * `processLine` normally so the id-rename cascades onto the parent's
-	 * `⛔` the same way it always has.
+	 * Skips a line only when its `🆔` is currently absent *and* the
+	 * arbiter refuses to let a fresh one be minted for it (see
+	 * {@link LineWriteArbiter.blocksIdMinting}). A suppressed id that is
+	 * merely a *different* value, not absent (the user renamed it by
+	 * hand), must still run through `processLine` normally so the
+	 * id-rename cascades onto the parent's `⛔` the same way it always
+	 * has.
 	 */
 	private runLinkPass(): void {
 		const existingIds = this.idCache.getAll();
@@ -112,8 +105,7 @@ export class EditorProcessor {
 
 		for (let i = 0; i < lineCount; i++) {
 			const idMissing = this.parser.getTaskId(this.editor.getLine(i)) === null;
-			const blocked = this.arbiter.isSuppressed(i, MarkerType.Id) || this.arbiter.isIndeterminate(i);
-			if (idMissing && blocked) {
+			if (idMissing && this.arbiter.blocksIdMinting(i)) {
 				continue;
 			}
 			const mintedId = this.linker.processLine(this.editor, i, existingIds);

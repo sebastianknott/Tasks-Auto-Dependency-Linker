@@ -190,6 +190,28 @@ export class LineWriteArbiter implements LineEditor {
 		return lineIndex === this.cursorLine && this.suppressedTypes.has(type);
 	}
 
+	/**
+	 * True when a link pass must not mint a fresh `\u{1F194}` for the given
+	 * line, because the user is either mid-edit on it or has already
+	 * removed its id by hand.
+	 *
+	 * The arbiter answers this instead of the caller assembling it from
+	 * {@link isSuppressed} and {@link isIndeterminate}, because the rule
+	 * is arbiter policy: which two states block minting, and that both
+	 * only apply to the cursor line. A caller that rebuilt it would have
+	 * to know the `lineIndex === cursorLine` guard as well, and would
+	 * silently block every line in the document the day it forgot.
+	 *
+	 * Minting is the specific thing being refused. It happens before
+	 * `setLine` is ever reached, and {@link TaskLinker.processLine}
+	 * writes the freshly minted id onto the *parent* line, which the
+	 * arbiter never inspects. Refusing after the fact is therefore too
+	 * late, which is why this query exists at all.
+	 */
+	blocksIdMinting(lineIndex: number): boolean {
+		return this.isSuppressed(lineIndex, MarkerType.Id) || this.isIndeterminate(lineIndex);
+	}
+
 
 	/**
 	 * True when the given line is the cursor line and it is currently
