@@ -1025,7 +1025,7 @@ describe('EditorProcessor', () => {
 	});
 });
 
-// Hardening suite from a mentor review of LineWriteArbiter. This is the higher-value
+// Hardening suite from a design review of LineWriteArbiter. This is the higher-value
 // integration counterpart to the pure-function invariants in tests/marker-invariants.test.ts:
 // it runs a full EditorProcessor.processAllLines pass, with the cursor sitting on a line mid
 // character-by-character deletion, and checks the exact class of corruption that the

@@ -5,7 +5,7 @@ import { TaskMetadataParser } from '../../src/task-metadata-parser';
 import { LineSnapshotStore } from '../../src/line-snapshot-store';
 
 /**
- * Hardening test suite for the marker accessors and LineSnapshotStore, built from a mentor
+ * Hardening test suite for the marker accessors and LineSnapshotStore, built from a design
  * review of LineWriteArbiter. The historical bug this suite targets: an earlier version of
  * LineSnapshotStore.computeBareText left a stray bare dependency glyph in the bare text,
  * which broke the arbiter's snapshot comparison gate and let the plugin restore a dependency
