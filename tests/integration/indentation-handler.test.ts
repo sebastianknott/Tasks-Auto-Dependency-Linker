@@ -1,59 +1,17 @@
-import { describe, it, expect, vi } from 'vitest';
-import { IndentationHandler } from '../src/indentation-handler';
-import { RelationshipAnalyzer } from '../src/relationship-analyzer';
-import { TaskParser } from '../src/task-parser';
-import { IdEngine } from '../src/id-engine';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
-import { MetadataSyncCache } from '../src/metadata-sync-cache';
-import { MetadataInheritor } from '../src/metadata-inheritor';
-import { MarkerAccessorRegistry } from '../src/marker-accessor';
-
-/** Minimal Editor mock matching Obsidian's Editor interface surface we use. */
-function createMockEditor(lines: string[]) {
-	return {
-		lineCount: vi.fn(() => lines.length),
-		getLine: vi.fn((n: number) => {
-			if (n < 0 || n >= lines.length) {
-				throw new RangeError(`getLine(${n}) out of bounds (0..${lines.length - 1})`);
-			}
-			return lines[n]!;
-		}),
-		setLine: vi.fn((n: number, text: string) => {
-			lines[n] = text;
-			return text;
-		}),
-	};
-}
-
-/** Editor whose setLine never mutates its backing lines, mimicking
- * LineWriteArbiter's indeterminate-cursor-line branch where a write is
- * proposed but the arbiter refuses it outright. */
-function createRefusingEditor(lines: string[]) {
-	return {
-		lineCount: vi.fn(() => lines.length),
-		getLine: vi.fn((n: number) => lines[n]!),
-		setLine: vi.fn((n: number, _text: string) => lines[n]!),
-	};
-}
-
-/** Editor whose setLine accepts a proposed write but also applies an
- * unrelated correction to it, mimicking LineWriteArbiter freezing an
- * unrelated suppressed marker on the same line while still accepting the
- * rest of the proposal (for example the new dependency). */
-function createCorrectingEditor(
-	lines: string[],
-	correct: (n: number, text: string) => string,
-) {
-	return {
-		lineCount: vi.fn(() => lines.length),
-		getLine: vi.fn((n: number) => lines[n]!),
-		setLine: vi.fn((n: number, text: string) => {
-			const corrected = correct(n, text);
-			lines[n] = corrected;
-			return corrected;
-		}),
-	};
-}
+import { describe, it, expect } from 'vitest';
+import { IndentationHandler } from '../../src/indentation-handler';
+import { RelationshipAnalyzer } from '../../src/relationship-analyzer';
+import { TaskParser } from '../../src/task-parser';
+import { IdEngine } from '../../src/id-engine';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { MetadataSyncCache } from '../../src/metadata-sync-cache';
+import { MetadataInheritor } from '../../src/metadata-inheritor';
+import { MarkerAccessorRegistry } from '../../src/marker-accessor';
+import {
+	createCorrectingEditor,
+	createLineEditor,
+	createRefusingEditor,
+} from '../fixtures/editor';
 
 describe('IndentationHandler', () => {
 	const parser = new TaskParser(TaskParser.DEFAULT_CONFIG);
@@ -63,6 +21,10 @@ describe('IndentationHandler', () => {
 	const syncCache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
 	const registry = new MarkerAccessorRegistry(parser, metadataParser);
 	const inheritor = new MetadataInheritor(registry, syncCache);
+
+	function createHandler(): IndentationHandler {
+		return new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+	}
 
 	describe('removeStaleDeps', () => {
 		it.each<[string, string, Set<string>, string]>([
@@ -130,9 +92,9 @@ describe('IndentationHandler', () => {
 
 	describe('prepareForLinkPass', () => {
 		it('stores the editor lines as a snapshot for processLine', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = ['- [ ] Parent', '\t- [ ] Child'];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 			handler.prepareForLinkPass(editor);
 			const existingIds = new Set<string>();
 			handler.processLine(editor, 1, existingIds);
@@ -142,12 +104,12 @@ describe('IndentationHandler', () => {
 
 	describe('processLine', () => {
 		it('adds ID to child and dependency to parent on indent', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 			const existingIds = new Set<string>();
 
 			handler.prepareForLinkPass(editor);
@@ -160,12 +122,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('reuses existing child ID instead of generating a new one', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child \u{1F194} abc123',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 			const existingIds = new Set(['abc123']);
 
 			handler.prepareForLinkPass(editor);
@@ -176,12 +138,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not modify a non-task line', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent',
 				'\tSome text',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set());
@@ -191,9 +153,9 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not modify a root-level task and returns null', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = ['- [ ] Root task'];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			const result = handler.processLine(editor, 0, new Set());
@@ -203,12 +165,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not duplicate an existing dependency and returns null (child ID was reused)', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent \u26D4 abc123',
 				'\t- [ ] Child \u{1F194} abc123',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			const result = handler.processLine(editor, 1, new Set(['abc123']));
@@ -218,12 +180,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('returns the newly generated ID instead of mutating existingIds', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 			const existingIds = new Set<string>();
 
 			handler.prepareForLinkPass(editor);
@@ -234,12 +196,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not mutate the existingIds set given to it', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 			const existingIds = new Set<string>();
 
 			handler.prepareForLinkPass(editor);
@@ -249,12 +211,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not call setLine for a line beyond lineCount', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 5, new Set());
@@ -263,9 +225,9 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not modify lines when processing an empty editor', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines: string[] = [];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 0, new Set());
@@ -274,12 +236,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('handles parent with existing dep on different child gracefully', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent ⛔ oldid1',
 				'\t- [ ] New Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['oldid1']));
@@ -295,12 +257,12 @@ describe('IndentationHandler', () => {
 
 	describe('metadata inheritance', () => {
 		it('inherits due, scheduled, and priority from parent on first indent', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent \u{1F4C5} 2025-01-01 \u{23F3} 2025-02-02 \u{23EB}',
 				'\t- [ ] Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set());
@@ -311,12 +273,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not inherit the start-date marker from the parent', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent \u{1F6EB} 2025-01-01',
 				'\t- [ ] Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set());
@@ -325,12 +287,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('inherits nothing when the parent has no metadata', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent',
 				'\t- [ ] Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set());
@@ -342,7 +304,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not overwrite metadata the user already set on the child', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			// Child already has its own due/scheduled/priority and an ID,
 			// so this is NOT a first-creation pass.
 			const childLine =
@@ -351,7 +313,7 @@ describe('IndentationHandler', () => {
 				'- [ ] Parent \u{1F4C5} 2025-01-01 \u{23F3} 2025-02-02 \u{23EB}',
 				childLine,
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['abc123']));
@@ -363,12 +325,12 @@ describe('IndentationHandler', () => {
 		});
 
 		it('does not re-add metadata on a second pass once the child has an ID', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			const lines = [
 				'- [ ] Parent \u{1F4C5} 2025-01-01 \u{23EB}',
 				'\t- [ ] Child',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set());
@@ -382,7 +344,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('inherits when an already-ID-bearing task is indented under a parent', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			// Child already carries an ID (e.g. it was a sibling that the
 			// Tasks plugin had given an ID) but has no metadata of its own,
 			// and the parent does not yet block it.
@@ -390,7 +352,7 @@ describe('IndentationHandler', () => {
 				'- [ ] Parent \u{1F4C5} 2025-01-01 \u{23F3} 2025-02-02 \u{23EB}',
 				'\t- [ ] Child \u{1F194} abc123',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['abc123']));
@@ -402,7 +364,7 @@ describe('IndentationHandler', () => {
 		});
 
 		it('re-inherits from the new parent when a child switches parents', () => {
-			const handler = new IndentationHandler(parser, idEngine, relAnalyzer, inheritor);
+			const handler = createHandler();
 			// Child is currently blocked by parent A (which already has its
 			// dep marker) but the snapshot now places it under parent B.
 			const lines = [
@@ -410,7 +372,7 @@ describe('IndentationHandler', () => {
 				'- [ ] Parent B \u{1F4C5} 2030-09-09 \u{23EC}',
 				'\t- [ ] Child \u{1F194} abc123',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 2, new Set(['abc123']));
@@ -439,42 +401,53 @@ describe('IndentationHandler', () => {
 			);
 		}
 
-		it("updates the child when the parent's due date changes and the child still held the old value", () => {
-			const prior = [
-				'- [ ] Parent \u{1F4C5} 2025-01-01',
-				'\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2025-01-01',
-			].join('\n');
-			const handler = seededHandler(prior);
-			const lines = [
-				'- [ ] Parent \u{1F4C5} 2025-09-09 \u26D4 abc123',
-				'\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2025-01-01',
-			];
-			const editor = createMockEditor(lines);
+		// The child line is the same before and after in every row: only the
+		// parent moved, so the question is whether the child follows it.
+		const parentValueChangeCases = [
+			{
+				name: "updates the child when the parent's due date changes and the child still held the old value",
+				child: '\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2025-01-01',
+				priorParent: '- [ ] Parent \u{1F4C5} 2025-01-01',
+				newParent: '- [ ] Parent \u{1F4C5} 2025-09-09 \u26D4 abc123',
+				expectedContain: '\u{1F4C5} 2025-09-09',
+				expectedNotContain: '2025-01-01',
+			},
+			{
+				name: 'does not change the child when the user gave it a different value',
+				child: '\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2099-12-31',
+				priorParent: '- [ ] Parent \u{1F4C5} 2025-01-01',
+				newParent: '- [ ] Parent \u{1F4C5} 2025-09-09 \u26D4 abc123',
+				expectedContain: '\u{1F4C5} 2099-12-31',
+				expectedNotContain: '2025-09-09',
+			},
+			{
+				name: 'propagates a changed parent priority onto a child that held the old priority',
+				child: '\t- [ ] Child \u{1F194} abc123 \u{23EC}',
+				priorParent: '- [ ] Parent \u{23EC}',
+				newParent: '- [ ] Parent \u{1F53A} \u26D4 abc123',
+				expectedContain: '\u{1F53A}',
+				expectedNotContain: '\u{23EC}',
+			},
+			{
+				name: 'propagates a changed parent scheduled date onto a child that held the old one',
+				child: '\t- [ ] Child \u{1F194} abc123 \u{23F3} 2025-02-02',
+				priorParent: '- [ ] Parent \u{23F3} 2025-02-02',
+				newParent: '- [ ] Parent \u{23F3} 2025-08-08 \u26D4 abc123',
+				expectedContain: '\u{23F3} 2025-08-08',
+				expectedNotContain: '2025-02-02',
+			},
+		];
+
+		it.each(parentValueChangeCases)('$name', ({ child, priorParent, newParent, expectedContain, expectedNotContain }) => {
+			const handler = seededHandler([priorParent, child].join('\n'));
+			const lines = [newParent, child];
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['abc123']));
 
-			expect(lines[1]).toContain('\u{1F4C5} 2025-09-09');
-			expect(lines[1]).not.toContain('2025-01-01');
-		});
-
-		it("does not change the child when the user gave it a different value", () => {
-			const prior = [
-				'- [ ] Parent \u{1F4C5} 2025-01-01',
-				'\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2099-12-31',
-			].join('\n');
-			const handler = seededHandler(prior);
-			const lines = [
-				'- [ ] Parent \u{1F4C5} 2025-09-09 \u26D4 abc123',
-				'\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2099-12-31',
-			];
-			const editor = createMockEditor(lines);
-
-			handler.prepareForLinkPass(editor);
-			handler.processLine(editor, 1, new Set(['abc123']));
-
-			expect(lines[1]).toContain('\u{1F4C5} 2099-12-31');
-			expect(lines[1]).not.toContain('2025-09-09');
+			expect(lines[1]).toContain(expectedContain);
+			expect(lines[1]).not.toContain(expectedNotContain);
 		});
 
 		it("leaves the child untouched when the parent clears its value", () => {
@@ -487,7 +460,7 @@ describe('IndentationHandler', () => {
 				'- [ ] Parent \u26D4 abc123',
 				'\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2025-01-01',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['abc123']));
@@ -503,7 +476,7 @@ describe('IndentationHandler', () => {
 			const handler = seededHandler(prior);
 			const childLine = '\t- [ ] Child \u{1F194} abc123 \u{1F4C5} 2025-01-01';
 			const lines = ['- [ ] Parent \u{1F4C5} 2025-01-01 \u26D4 abc123', childLine];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['abc123']));
@@ -522,7 +495,7 @@ describe('IndentationHandler', () => {
 			const handler = seededHandler(prior);
 			const childLine = '\t- [ ] Child \u{1F194} abc123';
 			const lines = ['- [ ] Parent \u{1F4C5} 2025-01-01 \u26D4 abc123', childLine];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['abc123']));
@@ -531,43 +504,6 @@ describe('IndentationHandler', () => {
 			expect(lines[1]).not.toContain('\u{1F4C5}');
 		});
 
-		it("propagates a changed parent priority onto a child that held the old priority", () => {
-			const prior = [
-				'- [ ] Parent \u{23EC}',
-				'\t- [ ] Child \u{1F194} abc123 \u{23EC}',
-			].join('\n');
-			const handler = seededHandler(prior);
-			const lines = [
-				'- [ ] Parent \u{1F53A} \u26D4 abc123',
-				'\t- [ ] Child \u{1F194} abc123 \u{23EC}',
-			];
-			const editor = createMockEditor(lines);
-
-			handler.prepareForLinkPass(editor);
-			handler.processLine(editor, 1, new Set(['abc123']));
-
-			expect(lines[1]).toContain('\u{1F53A}');
-			expect(lines[1]).not.toContain('\u{23EC}');
-		});
-
-		it("propagates a changed parent scheduled date onto a child that held the old one", () => {
-			const prior = [
-				'- [ ] Parent \u{23F3} 2025-02-02',
-				'\t- [ ] Child \u{1F194} abc123 \u{23F3} 2025-02-02',
-			].join('\n');
-			const handler = seededHandler(prior);
-			const lines = [
-				'- [ ] Parent \u{23F3} 2025-08-08 \u26D4 abc123',
-				'\t- [ ] Child \u{1F194} abc123 \u{23F3} 2025-02-02',
-			];
-			const editor = createMockEditor(lines);
-
-			handler.prepareForLinkPass(editor);
-			handler.processLine(editor, 1, new Set(['abc123']));
-
-			expect(lines[1]).toContain('\u{23F3} 2025-08-08');
-			expect(lines[1]).not.toContain('2025-02-02');
-		});
 	});
 
 	describe('sync cache confirmation', () => {
@@ -594,7 +530,7 @@ describe('IndentationHandler', () => {
 				'- [ ] Parent \u{1F4C5} 2025-01-01',
 				'\t- [ ] Child \u{1F194} abc123',
 			];
-			const editor = createMockEditor(lines);
+			const editor = createLineEditor(lines);
 
 			handler.prepareForLinkPass(editor);
 			handler.processLine(editor, 1, new Set(['abc123']));

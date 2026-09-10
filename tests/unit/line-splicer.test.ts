@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LineSplicer } from '../src/line-splicer';
+import { LineSplicer } from '../../src/line-splicer';
 
 /**
  * LineSplicer owns the single whitespace rule that keeps marker apply/remove

@@ -51,6 +51,36 @@ export default tseslint.config(
 			'@typescript-eslint/prefer-readonly': 'error',
 		},
 	},
+	{
+		// Tests are linted, but not held to the src/ Clean Code budgets: every
+		// `describe` callback counts as a function, so a 50-line cap would fail
+		// on nearly every file without saying anything about test quality.
+		files: ['tests/**/*.ts'],
+		plugins: {
+			'@typescript-eslint': tseslint.plugin,
+		},
+		rules: {
+			'max-lines-per-function': 'off',
+			'complexity': 'off',
+
+			// Tests reach into mock internals that the real Obsidian API does not
+			// expose (`_vaultEmitter`, `_layoutReadyCb`) and into private fields of
+			// the plugin class. That traffic is deliberately typed as `any`, so the
+			// type-aware `no-unsafe-*` family fires on every dereference without
+			// finding a real defect. Same call made by obsidian-tasks and by
+			// obsidian-test-mocks; typescript-eslint sanctions it under the
+			// "When Not To Use It" section of the no-unsafe-member-access docs.
+			// `tsc -p tests/tsconfig.json` remains the type safety net for tests.
+			'@typescript-eslint/no-unsafe-member-access': 'off',
+			'@typescript-eslint/no-unsafe-call': 'off',
+			'@typescript-eslint/no-unsafe-assignment': 'off',
+
+			// Passing a spy by reference (`expect(mock.setLine)`) is the normal way
+			// to assert on it, and carries none of the `this`-binding risk the rule
+			// guards against.
+			'@typescript-eslint/unbound-method': 'off',
+		},
+	},
 	globalIgnores([
 		"node_modules",
 		"dist",
@@ -62,7 +92,6 @@ export default tseslint.config(
 		"reports",
 		"stryker.config.mjs",
 		"vitest.config.ts",
-		"tests",
 		".stryker-tmp",
 	]),
 );

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { MarkerAccessorRegistry, MarkerType } from '../src/marker-accessor';
-import { TaskParser } from '../src/task-parser';
-import { TaskMetadataParser } from '../src/task-metadata-parser';
-import { LineSnapshotStore } from '../src/line-snapshot-store';
+import { MarkerAccessorRegistry, MarkerType } from '../../src/marker-accessor';
+import { TaskParser } from '../../src/task-parser';
+import { TaskMetadataParser } from '../../src/task-metadata-parser';
+import { LineSnapshotStore } from '../../src/line-snapshot-store';
 
 /**
  * Hardening test suite for the marker accessors and LineSnapshotStore, built from a mentor

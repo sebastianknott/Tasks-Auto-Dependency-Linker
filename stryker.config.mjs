@@ -12,7 +12,10 @@ export default {
 		'!src/**/*.spec.ts',
 		'!src/**/*.d.ts',
 	],
-	reporters: ['html', 'clear-text', 'progress'],
+	// The json reporter writes reports/mutation/mutation.json, which records
+	// per-mutant which tests killed it. Run stryker with disableBail: true to
+	// get every killer rather than only the first one.
+	reporters: ['html', 'clear-text', 'progress', 'json'],
 	thresholds: {
 		high: 100,
 		low: 99,

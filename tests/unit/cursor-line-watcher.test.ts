@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { CursorLineWatcher } from '../src/cursor-line-watcher';
-import type { CapturedUpdateListener } from './__mocks__/codemirror-view';
+import { CursorLineWatcher } from '../../src/cursor-line-watcher';
+import type { CapturedUpdateListener } from '../__mocks__/codemirror-view';
 import type { ViewUpdate } from '@codemirror/view';
 
 /**

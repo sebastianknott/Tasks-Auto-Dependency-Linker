@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Plugin, TFile } from 'obsidian';
-import { PluginTriggers } from '../src/plugin-triggers';
-import type { CacheCoordinator } from '../src/cache-coordinator';
-import type { LineWriteArbiter } from '../src/line-write-arbiter';
-import type { Debounce } from '../src/utils';
-import type { CursorLineWatcher } from '../src/cursor-line-watcher';
+import { PluginTriggers } from '../../src/plugin-triggers';
+import type { CacheCoordinator } from '../../src/cache-coordinator';
+import type { LineWriteArbiter } from '../../src/line-write-arbiter';
+import type { Debounce } from '../../src/utils';
+import type { CursorLineWatcher } from '../../src/cursor-line-watcher';
 
 /**
  * Helper: cast plugin to access mock internals set up by the obsidian mock.
