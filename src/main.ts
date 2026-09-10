@@ -9,7 +9,8 @@ import { RelationshipAnalyzer } from './parsing/relationship-analyzer';
 import { TaskMetadataParser } from './parsing/task-metadata-parser';
 import { MetadataSyncCache } from './cache/metadata-sync-cache';
 import { MetadataInheritor } from './linking/metadata-inheritor';
-import { IndentationHandler } from './linking/indentation-handler';
+import { TaskLinker } from './linking/task-linker';
+import { DependencyCleaner } from './linking/dependency-cleaner';
 import { EditorProcessor } from './processing/editor-processor';
 import { CacheCoordinator } from './cache/cache-coordinator';
 import { ObsidianEditorAdapter } from './obsidian/obsidian-editor-adapter';
@@ -23,8 +24,8 @@ import { PluginTriggers } from './obsidian/plugin-triggers';
  * Tasks Auto-Dependency Linker plugin for Obsidian.
  *
  * Thin shell that wires Obsidian events to the extracted, testable classes.
- * All logic lives in TaskParser, IdGenerator, IdCache, IndentationHandler,
- * EditorProcessor, CacheCoordinator, and Debounce.
+ * All logic lives in TaskParser, IdGenerator, IdCache, TaskLinker,
+ * DependencyCleaner, EditorProcessor, CacheCoordinator, and Debounce.
  */
 export default class TasksAutoDependencyLinker extends Plugin {
 	private debounce!: Debounce;
@@ -77,9 +78,10 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		const registry = new MarkerAccessorRegistry(parser, metadataParser);
 		this.syncCache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
 		const inheritor = new MetadataInheritor(registry, this.syncCache);
-		const handler = new IndentationHandler(
+		const linker = new TaskLinker(
 			parser, idGenerator, relAnalyzer, inheritor,
 		);
+		const cleaner = new DependencyCleaner(parser);
 
 		this.idCache = new IdCache(scanner);
 		this.depCache = new DepCache(scanner);
@@ -88,7 +90,8 @@ export default class TasksAutoDependencyLinker extends Plugin {
 		);
 		this.arbiter = new LineWriteArbiter(registry);
 		this.processor = new EditorProcessor(
-			handler, parser, relAnalyzer, this.idCache, this.depCache, this.arbiter,
+			linker, cleaner, parser, relAnalyzer,
+			this.idCache, this.depCache, this.arbiter,
 		);
 		this.debounce = new Debounce(() => this.processActiveEditor());
 		this.watcher = new CursorLineWatcher(() => this.debounce.call());

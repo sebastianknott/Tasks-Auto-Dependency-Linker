@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EditorProcessor } from '../../src/processing/editor-processor';
-import { IndentationHandler } from '../../src/linking/indentation-handler';
+import { TaskLinker } from '../../src/linking/task-linker';
+import { DependencyCleaner } from '../../src/linking/dependency-cleaner';
 import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
 import type { MarkerCacheLike } from '../../src/types';
 import { TaskParser } from '../../src/parsing/task-parser';
@@ -26,7 +27,7 @@ function createDepCache(deps?: Set<string>): MarkerCacheLike {
 	};
 }
 
-/** Creates a standard test processor with handler, caches, and mock editor. */
+/** Creates a standard test processor with linker, cleaner, caches, and mock editor. */
 function createTestProcessor(
 	lines: string[],
 	existingIds?: Set<string>,
@@ -37,7 +38,7 @@ function createTestProcessor(
 	const relAnalyzer = new RelationshipAnalyzer(parser);
 	const metadataParser = new TaskMetadataParser();
 	const registry = new MarkerAccessorRegistry(parser, metadataParser);
-	const handler = new IndentationHandler(
+	const linker = new TaskLinker(
 		parser,
 		idGenerator,
 		relAnalyzer,
@@ -46,9 +47,11 @@ function createTestProcessor(
 			new MetadataSyncCache(parser, metadataParser, relAnalyzer),
 		),
 	);
+	const cleaner = new DependencyCleaner(parser);
 	const arbiter = options?.arbiter ?? new LineWriteArbiter(registry);
 	const processor = new EditorProcessor(
-		handler,
+		linker,
+		cleaner,
 		parser,
 		relAnalyzer,
 		createIdCache(existingIds ?? new Set<string>(), options?.excludedIds),
@@ -56,7 +59,7 @@ function createTestProcessor(
 		arbiter,
 	);
 	const editor = createEditor(lines);
-	return { parser, handler, processor, editor, lines, arbiter, idGenerator };
+	return { parser, linker, cleaner, processor, editor, lines, arbiter, idGenerator };
 }
 
 describe('EditorProcessor', () => {
@@ -170,12 +173,12 @@ describe('EditorProcessor', () => {
 	});
 
 	it('calls processLine exactly lineCount times', () => {
-		const { handler, processor, editor } = createTestProcessor([
+		const { linker, processor, editor } = createTestProcessor([
 			'- [ ] Task A',
 			'- [ ] Task B',
 			'\t- [ ] Task C',
 		]);
-		const spy = vi.spyOn(handler, 'processLine');
+		const spy = vi.spyOn(linker, 'processLine');
 
 		processor.processAllLines(editor, '');
 
@@ -306,7 +309,7 @@ describe('EditorProcessor', () => {
 			const spaceRelAnalyzer = new RelationshipAnalyzer(spaceParser);
 			const spaceMetadataParser = new TaskMetadataParser();
 			const spaceRegistry = new MarkerAccessorRegistry(spaceParser, spaceMetadataParser);
-			const handler = new IndentationHandler(
+			const linker = new TaskLinker(
 				spaceParser,
 				idGenerator,
 				spaceRelAnalyzer,
@@ -315,10 +318,11 @@ describe('EditorProcessor', () => {
 					new MetadataSyncCache(spaceParser, spaceMetadataParser, spaceRelAnalyzer),
 				),
 			);
+			const spaceCleaner = new DependencyCleaner(spaceParser);
 			const existingIds = new Set(['abc444', 'abc123']);
 			const spaceArbiter = new LineWriteArbiter(spaceRegistry);
 			const processor = new EditorProcessor(
-				handler, spaceParser, spaceRelAnalyzer, createIdCache(existingIds), createDepCache(),
+				linker, spaceCleaner, spaceParser, spaceRelAnalyzer, createIdCache(existingIds), createDepCache(),
 				spaceArbiter,
 			);
 
@@ -595,14 +599,14 @@ describe('EditorProcessor', () => {
 				new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser()),
 			);
 			const lines = ['- [ ] Parent \u26D4 abc123', '\t- [ ] Child \u{1F194} abc123'];
-			const { processor, handler, editor } = createTestProcessor(
+			const { processor, linker, editor } = createTestProcessor(
 				lines, new Set(['abc123']), { arbiter },
 			);
 			processor.processAllLines(editor, '');
 
 			lines[1] = '\t- [ ] Child';
 			const editor2 = createEditor(lines, { line: 1, ch: 6 });
-			const spy = vi.spyOn(handler, 'processLine');
+			const spy = vi.spyOn(linker, 'processLine');
 			processor.processAllLines(editor2, '');
 
 			expect(spy).not.toHaveBeenCalledWith(expect.anything(), 1, expect.anything());
@@ -742,7 +746,7 @@ describe('EditorProcessor', () => {
 				new MarkerAccessorRegistry(new TaskParser(), new TaskMetadataParser()),
 			);
 			const lines = ['- [ ] Parent \u26D4 abc123', '\t- [ ] Child \u{1F194} abc123'];
-			const { processor, handler, editor } = createTestProcessor(
+			const { processor, linker, editor } = createTestProcessor(
 				lines, new Set(['abc123']), { arbiter },
 			);
 			processor.processAllLines(editor, '');
@@ -756,7 +760,7 @@ describe('EditorProcessor', () => {
 			// from the line's own content.
 			lines[1] = '\t- [ ] Child \u{1F194}';
 			const editor2 = createEditor(lines, { line: 1, ch: 14 });
-			const spy = vi.spyOn(handler, 'processLine');
+			const spy = vi.spyOn(linker, 'processLine');
 			processor.processAllLines(editor2, '');
 
 			expect(spy).not.toHaveBeenCalledWith(expect.anything(), 1, expect.anything());

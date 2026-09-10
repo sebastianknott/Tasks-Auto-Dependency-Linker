@@ -1,11 +1,12 @@
 /**
  * Orchestrates multi-pass processing of all editor lines.
  *
- * Separated from `indentation-handler.ts` so each file stays
+ * Separated from `task-linker.ts` so each file stays
  * within the FTA complexity budget.
  */
 
-import type { IndentationHandler } from '../linking/indentation-handler';
+import type { TaskLinker } from '../linking/task-linker';
+import type { DependencyCleaner } from '../linking/dependency-cleaner';
 import type { TaskParser } from '../parsing/task-parser';
 import type { RelationshipAnalyzer } from '../parsing/relationship-analyzer';
 import { CursorGuard } from '../editing/cursor-guard';
@@ -28,7 +29,8 @@ import type { EditorLike, LineEditor, MarkerCacheLike } from '../types';
  * processing and reset at the start of each {@link processAllLines} call.
  */
 export class EditorProcessor {
-	private readonly handler: IndentationHandler;
+	private readonly linker: TaskLinker;
+	private readonly cleaner: DependencyCleaner;
 	private readonly parser: TaskParser;
 	private readonly relAnalyzer: RelationshipAnalyzer;
 	private readonly idCache: MarkerCacheLike;
@@ -44,14 +46,16 @@ export class EditorProcessor {
 
 	// eslint-disable-next-line max-params
 	constructor(
-		handler: IndentationHandler,
+		linker: TaskLinker,
+		cleaner: DependencyCleaner,
 		parser: TaskParser,
 		relAnalyzer: RelationshipAnalyzer,
 		idCache: MarkerCacheLike,
 		depCache: MarkerCacheLike,
 		arbiter: LineWriteArbiter,
 	) {
-		this.handler = handler;
+		this.linker = linker;
+		this.cleaner = cleaner;
 		this.parser = parser;
 		this.relAnalyzer = relAnalyzer;
 		this.idCache = idCache;
@@ -90,7 +94,7 @@ export class EditorProcessor {
 	 * two commas). Letting `processLine` run in that state would mint a
 	 * fresh id and write it onto the *parent* line before the arbiter
 	 * ever sees the child's proposal, since
-	 * {@link IndentationHandler.processLine} writes the parent first.
+	 * {@link TaskLinker.processLine} writes the parent first.
 	 * The arbiter's own `setLine` correction runs too late to undo that
 	 * write, since it only ever sees the *child's* proposal, not the
 	 * parent's. A suppressed id that is merely a *different* value, not
@@ -104,7 +108,7 @@ export class EditorProcessor {
 
 		// Read all lines once so processLine can find parents without rebuilding
 		// the full array on every call (avoids O(N^2) line reads).
-		this.handler.prepareForLinkPass(this.editor);
+		this.linker.prepareForLinkPass(this.editor);
 
 		for (let i = 0; i < lineCount; i++) {
 			const idMissing = this.parser.getTaskId(this.editor.getLine(i)) === null;
@@ -112,7 +116,7 @@ export class EditorProcessor {
 			if (idMissing && blocked) {
 				continue;
 			}
-			const mintedId = this.handler.processLine(this.editor, i, existingIds);
+			const mintedId = this.linker.processLine(this.editor, i, existingIds);
 			if (mintedId !== null) {
 				existingIds.add(mintedId);
 			}
@@ -202,7 +206,7 @@ export class EditorProcessor {
 			const desiredDeps = this.relAnalyzer.getDesiredDepsForParent(
 				blockLines, bi, relationships,
 			);
-			const cleaned = this.handler.removeStaleDeps(line, desiredDeps, blockIds);
+			const cleaned = this.cleaner.removeStaleDeps(line, desiredDeps, blockIds);
 			if (cleaned !== line) {
 				this.applyCleanedLine(bi, cleaned);
 			}
@@ -214,7 +218,7 @@ export class EditorProcessor {
 		const start = this.currentBlock.start;
 		for (let i = start; i < this.currentBlock.end; i++) {
 			const line = this.lines[i]!;
-			const cleaned = this.handler.removeDanglingDeps(line, knownIds);
+			const cleaned = this.cleaner.removeDanglingDeps(line, knownIds);
 			if (cleaned !== line) {
 				this.applyCleanedLine(i - start, cleaned);
 			}
@@ -229,7 +233,7 @@ export class EditorProcessor {
 			const id = this.parser.getTaskId(line);
 			if (
 				id &&
-				!this.handler.isIdReferencedAsDep(this.lines, id) &&
+				!this.cleaner.isIdReferencedAsDep(this.lines, id) &&
 				!vaultDepIds.has(id)
 			) {
 				const cleaned = this.parser.removeIdFromLine(line);
