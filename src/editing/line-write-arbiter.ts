@@ -44,10 +44,16 @@
  * than reconciled, and `endPass` keeps the last well-formed snapshot
  * for that line instead of overwriting it with the fragment, so
  * suppression still engages correctly once the edit finishes.
+ *
+ * The comparison itself lives in {@link SuppressionDetector}, which
+ * reads one pass and reports what it saw. This class decides what to
+ * do about it: how long suppression lasts, when it rotates, and which
+ * writes get refused.
  */
 
 import { MarkerAccessorRegistry, MarkerType } from '../parsing/marker-accessor';
-import { LineSnapshotStore, type LineSnapshot } from './line-snapshot-store';
+import { LineSnapshotStore } from './line-snapshot-store';
+import { SuppressionDetector } from './suppression-detector';
 import type { LineEditor } from '../types';
 
 export class LineWriteArbiter implements LineEditor {
@@ -76,23 +82,26 @@ export class LineWriteArbiter implements LineEditor {
 	 * verification is evidence for this pass only and must never persist
 	 * across passes the way suppression does.
 	 */
-	private verifiedTypes = new Set<MarkerType>();
-	private verifiedDepIds = new Set<string>();
+	private verifiedTypes: ReadonlySet<MarkerType> = new Set();
+	private verifiedDepIds: ReadonlySet<string> = new Set();
 
 	constructor(
 		private readonly registry: MarkerAccessorRegistry,
 		private readonly snapshotStore: LineSnapshotStore = new LineSnapshotStore(registry),
+		private readonly detector: SuppressionDetector = new SuppressionDetector(registry, snapshotStore),
 	) {}
 
 	/**
 	 * Called at the start of every pass. Rotates suppression state when
-	 * the file or cursor line changed, then re-derives suppression and
-	 * verification for the current cursor line from the snapshot taken
-	 * at the end of the previous pass.
+	 * the file or cursor line changed, then folds in what the
+	 * {@link SuppressionDetector} read off the cursor line this pass.
+	 *
+	 * Suppression accumulates: every marker the user removed while the
+	 * caret stayed on this line stays suppressed. Verification does not,
+	 * because it is evidence about this pass alone and must never carry
+	 * over to a pass that did not re-establish it.
 	 */
 	beginPass(target: LineEditor, cursorLine: number, filePath: string): void {
-		this.verifiedTypes = new Set();
-		this.verifiedDepIds = new Set();
 		this.target = target;
 		if (filePath !== this.filePath) {
 			this.filePath = filePath;
@@ -104,75 +113,15 @@ export class LineWriteArbiter implements LineEditor {
 			this.suppressedDepIds = new Set();
 		}
 		this.cursorLine = cursorLine;
-		this.cursorLineIndeterminate = this.computeIndeterminate();
-		this.detectSuppression();
-	}
-
-	private detectSuppression(): void {
-		if (this.cursorLine >= this.target.lineCount()) {
-			return;
+		const observation = this.detector.observe(target, cursorLine);
+		this.cursorLineIndeterminate = observation.indeterminate;
+		this.verifiedTypes = observation.verifiedTypes;
+		this.verifiedDepIds = observation.verifiedDepIds;
+		for (const type of observation.newlySuppressedTypes) {
+			this.suppressedTypes.add(type);
 		}
-		const prior = this.snapshotStore.get(this.cursorLine);
-		if (!prior) {
-			return;
-		}
-		const currentLine = this.target.getLine(this.cursorLine);
-		if (prior.bareText !== this.snapshotStore.computeBareText(currentLine)) {
-			return;
-		}
-		this.detectSuppressedMarkers(prior, currentLine);
-		this.detectSuppressedDeps(prior, currentLine);
-	}
-
-
-	/**
-	 * True when the cursor line carries a glyph for some marker type
-	 * (single-value or dependency) whose value does not fully parse.
-	 * Computed fresh from the line's raw content on every pass, so it
-	 * catches a mid-edit marker on the very first pass that sees it,
-	 * without needing a prior snapshot to compare against.
-	 */
-	private computeIndeterminate(): boolean {
-		if (this.cursorLine < 0 || this.cursorLine >= this.target.lineCount()) {
-			return false;
-		}
-		const line = this.target.getLine(this.cursorLine);
-		return (
-			this.registry.markers.some((accessor) => accessor.hasFragment(line)) ||
-			this.registry.dependency.hasFragment(line)
-		);
-	}
-
-	/**
-	 * A marker whose value changed since the prior snapshot is suppressed;
-	 * one whose value is unchanged is verified as untouched instead. Both
-	 * sets are consulted by the correction methods below, which always
-	 * check suppression first and never look at verification once
-	 * suppression already applies, so a marker cannot land in both sets
-	 * with any observable effect.
-	 */
-	private detectSuppressedMarkers(prior: LineSnapshot, currentLine: string): void {
-		for (const accessor of this.registry.markers) {
-			const priorValue = prior.markers.get(accessor.type) ?? null;
-			if (priorValue === null) {
-				continue;
-			}
-			if (accessor.read(currentLine) !== priorValue) {
-				this.suppressedTypes.add(accessor.type);
-			} else {
-				this.verifiedTypes.add(accessor.type);
-			}
-		}
-	}
-
-	private detectSuppressedDeps(prior: LineSnapshot, currentLine: string): void {
-		const currentDeps = this.registry.dependency.read(currentLine);
-		for (const depId of prior.deps) {
-			if (!currentDeps.has(depId)) {
-				this.suppressedDepIds.add(depId);
-			} else {
-				this.verifiedDepIds.add(depId);
-			}
+		for (const depId of observation.newlySuppressedDepIds) {
+			this.suppressedDepIds.add(depId);
 		}
 	}
 
