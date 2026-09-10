@@ -189,31 +189,33 @@ Config impact, verified: `stryker.config.mjs` mutates `src/**/*.ts`, `vitest.con
 
 Split `tests/integration/indentation-handler.test.ts` (625 lines). Rewire `main.ts` and the cleanup pass.
 
-**Design review, before C6.** Required, not optional. Pressure-test the verdict-object boundary before any code changes in C6 or C7, against `src/line-write-arbiter.ts` in full and the C6 and C7 descriptions below, together with the three earlier defects in this area: the `setLine` return contract, a bare fragment on the cursor line steering a cleanup sub-pass onto the parent, and backspacing inside an id rewriting the parent every keystroke. Three questions to answer: whether the verdict object is the right seam, whether suppression rotation genuinely belongs on the arbiter rather than the detector, and what the split would break that the existing 1133-line test file would not catch. Fold the answer into this document before writing code.
+**Design review, before C6.** Done. Section 9 records the outcome and supersedes the original C6 to C8 descriptions below.
+
+**C5a. Pin the two untested invariants.** Facade-level tests against the current code, landed before any extraction. See section 9.3.
 
 **C6. Extract `editing/suppression-detector.ts`.**
 
-Moves `detectSuppression`, `detectSuppressedMarkers`, `detectSuppressedDeps`, and `computeIndeterminate`. Returns one immutable per-pass verdict:
+Moves `detectSuppression`, `detectSuppressedMarkers`, `detectSuppressedDeps`, and `computeIndeterminate` into a stateless detector. It returns one immutable per-pass observation:
 
 ```ts
-interface CursorLineVerdict {
-	readonly suppressedTypes: ReadonlySet<MarkerType>;
-	readonly suppressedDepIds: ReadonlySet<string>;
+interface PassObservation {
+	readonly newlySuppressedTypes: ReadonlySet<MarkerType>;
+	readonly newlySuppressedDepIds: ReadonlySet<string>;
 	readonly verifiedTypes: ReadonlySet<MarkerType>;
 	readonly verifiedDepIds: ReadonlySet<string>;
 	readonly indeterminate: boolean;
 }
 ```
 
-Suppression survives across passes while the caret stays on one line, so the arbiter still owns the rotation logic in `beginPass`. The detector computes, the arbiter decides what to keep.
+The `newly` prefix carries the design. Suppression accumulates across passes while the caret stays on one line; verification does not. See section 9.2 for why the field names have to say so.
 
 **C7. Extract `editing/proposal-reconciler.ts`.**
 
-Moves `correctProposal`, `correctDeps`, and `desiredDepPresence`. Pure, given a verdict and a `MarkerAccessorRegistry`. `LineWriteArbiter` keeps pass lifecycle, `LineEditor` decoration, and the query facade.
+Moves `correctProposal`, `correctDeps`, and `desiredDepPresence`. Pure, given the four marker sets and a `MarkerAccessorRegistry`. It does not receive `indeterminate`. `LineWriteArbiter` keeps pass lifecycle, accumulation, the indeterminate gate, `LineEditor` decoration, and the query facade.
 
-**C8. Collapse the five arbiter queries into one verdict read.**
+**C8. Replace the id-blocked pair with one intent query.**
 
-`isSuppressed`, `isIndeterminate`, `getSuppressedDepIds`, `getFrozenDepsForIndeterminateLine`, and `getFrozenIdForCursorLine` become reads off the C6 verdict object. Fixes defect 2.4.
+`isSuppressed` and `isIndeterminate` collapse into `mayLinkLine(lineIndex)`. The other three queries stay. Section 9.4 explains why the original "collapse all five into a verdict read" was dropped.
 
 **C9. Split `EditorProcessor` into `link-pass.ts`, `cleanup-pass.ts`, and a thin orchestrator.**
 
@@ -269,4 +271,70 @@ These were answered while scoping the work. They are no longer open.
 ## 8. Before starting C1
 
 Run `npm run check` against a clean tree to confirm the baseline is green. The language server currently reports errors against `tests/line-snapshot-store.test.ts` and `tests/cursor-guard.test.ts`, paths that commit `050ada8` moved into `tests/unit/`. A stale index explains it, but confirm that before attributing any later failure to this refactoring.
+
+## 9. Design review of the LineWriteArbiter split
+
+The review required in Phase 3 ran after C5. Its findings change C6 to C8. This section supersedes the original wording of those three commits.
+
+### 9.1 The seam is right, the type crossing it was wrong
+
+Extracting a detector and a reconciler out of `LineWriteArbiter` is sound. The `CursorLineVerdict` shape proposed in section 4 is not, because it names two different concepts with one type.
+
+A detector output answers "what did comparing the prior snapshot against the current cursor line reveal this pass". That is one cohesive value: one subject, one moment, one comparison. Three consumers reading different subsets of it is normal and not a cohesion problem.
+
+The accumulated suppression state is a different thing. It is cleared on cursor or file rotation and unioned across passes. Calling both of them `suppressedTypes` invites `this.suppressed = observation.suppressedTypes` in some later edit, which silently converts accumulating suppression into per-pass suppression, and no type error fires. Renaming the detector's fields to `newlySuppressedTypes` and `newlySuppressedDepIds` makes replacement look wrong at the call site, which is the only place the mistake can be made.
+
+The reconciler receives the four marker sets and nothing else. It must not receive `indeterminate`, because `setLine` short-circuits on that flag before reconciliation ever runs, and the flag separately feeds the frozen-value queries. Handing the reconciler a field it may never act on is an invitation to duplicate the gate there later.
+
+### 9.2 Accumulation stays on the arbiter, the detector stays stateless
+
+Three reasons the detector cannot own the accumulated sets:
+
+1. Every rotation trigger is a pass-lifecycle fact: `filePath` changed, `cursorLine` changed, `seedFromText` ran. A detector that owns accumulation has to be told all three, at which point it has absorbed half of `beginPass`.
+2. File rotation resets the snapshot store and the suppression sets together. Splitting that across two classes splits one invariant, on exactly the state whose failure resurrects markers the user deleted.
+3. A stateless detector is a pure function of the prior snapshot, the current line, and the registry. That is cheap to unit test, which matters under a 100 percent mutation mandate.
+
+The shape of `beginPass` after C6: rotate, call the detector, union `newlySuppressed*` into the accumulated sets, assign `verified*` and `indeterminate` outright. Verification is assigned, never accumulated. The current code clears the verified sets unconditionally at the top of `beginPass`, before any early return inside detection; a stateless detector reproduces that for free, since an early return yields an empty observation.
+
+One precedence rule has to survive the cut untouched. A marker type can sit in the accumulated suppressed set and this pass's verified set at once: the user deleted it, then hand re-added it while the caret never left the line. `correctProposal` checks `suppressedTypes.has(type)` with an `||`, and `desiredDepPresence` checks `suppressedDepIds` first, so suppression wins. A tidy-up during extraction that folds suppressed and verified into one tri-state would change that, keep every existing test green, and Stryker would not notice, because mutation testing proves the tests kill mutants of the code as written, not that the code as written still matches the old semantics.
+
+### 9.3 What the 1133-line facade suite does not catch
+
+A coverage audit of `tests/unit/line-write-arbiter.test.ts` found eleven of twelve candidate scenarios already covered, including multi-pass suppression accumulation, suppression persistence under a bareText mismatch, per-pass verification reset, fragment snapshot retention, the `setLine` return contract, cursor rotation, file rotation onto the same line number, and the `seedFromText` no-op.
+
+Two gaps remain. Both land as pinning tests in C5a, against the current code, green before anything moves:
+
+1. **Suppression beats verification on the same type and the same dep id.** Pass 1 the user deletes `📅`, pass 2 they have hand re-added `📅 2026-01-01` so it verifies while still sitting in the accumulated suppressed set. A proposal that changes the date and a proposal that removes it must both be refused. Mirror the test for a dependency id.
+2. **The reconciler's read source is pinned.** `correctDeps` reads `currentDeps` and `proposedDeps` off the original `current` and `proposed` strings, but applies its edits to `corrected`, which marker correction already rewrote. Reading deps off `corrected` instead looks like a harmless cleanup and is probably equivalent today, but nothing pins it. One test where marker suppression rewrites the line and a dependency decision happens in the same `setLine` call, asserting the exact output string, closes it.
+
+Two further items during the cut:
+
+3. After C6, expect Stryker survivors to cluster in the arbiter's new fold and rotation code. Add the direct test each survivor demands rather than weakening anything.
+4. The detector's three early exits (`cursorLine >= lineCount`, no prior snapshot, bareText mismatch) must each yield a fully empty observation, not a partial one. The out-of-bounds case also covers `cursorLine = -1`, which today survives only because `snapshotStore.get(-1)` finds nothing; `computeIndeterminate` guards `< 0` but `detectSuppression` does not. Preserve that asymmetry, do not repair it inside this refactoring.
+
+**Iteration-order risk, confirmed.** The existing suite asserts dependency outcomes with `toContain` and set membership rather than exact string equality, at `tests/unit/line-write-arbiter.test.ts:334`, `:335`, `:486`, and `:487` among others. Extracting `correctDeps` into a pure collaborator can change `Set` construction order and therefore the order of ids inside a `⛔` list, and those assertions would not notice. Tighten the multi-dependency cases to exact-string assertions in C5a.
+
+### 9.4 C8 shrinks
+
+Collapsing all five queries into a raw verdict read was the wrong trade. `getFrozenDepsForIndeterminateLine` encapsulates "if the line is mid-edit, fall back to the snapshot's deps, otherwise nothing", which is arbiter policy. Exporting that into the `processing` layer moves per-line gating into every caller and disturbs the code path where the parent-versus-child fragment edge case lives, in exchange for deleting four method signatures. `isSuppressed(i, type)` and `isIndeterminate(i)` both embed `lineIndex === this.cursorLine`; a caller that forgets that guard blocks every id-missing line in the document whenever anything is suppressed, and no arbiter-level test can see it.
+
+C6 and C7 already meet the cohesion and FTA goals on their own. The residual arbiter is roughly 150 lines of lifecycle plus delegation.
+
+C8 therefore keeps only the half that adds encapsulation: the link pass's `isSuppressed(i, MarkerType.Id) || isIndeterminate(i)` pair becomes a single `mayLinkLine(lineIndex)` on the arbiter. The other three queries stay as they are. Defect 2.4 is downgraded from "five reads reassemble the arbiter's state" to "one read of an intent the arbiter names itself".
+
+### 9.5 Correction to one assumption in the review
+
+The review assumed `computeBareText` leaves a bare fragment glyph in the bare text, so that a mid-edit line fails the snapshot comparison and detection early-returns. The opposite is true, and deliberately so. `LineSnapshotStore.computeBareText` runs catch-all regexes that strip a bare `⛔`, a bare `🆔`, and a date glyph followed by a partial `[\d-]*` run, precisely so a mid-edit line still compares equal to its prior bare text and detection proceeds instead of silently skipping. The inline comments in that method state the reasoning. Nothing else in the review depends on the assumption.
+
+### 9.6 Commit structure
+
+Three commits, not two, so that a regression found in the live vault smoke test bisects cleanly between "detection moved" and "reconciliation moved":
+
+1. **C5a**: the two pinning tests plus the exact-string tightening, against unchanged production code.
+2. **C6**: the detector, then Stryker, then survivor-driven detector tests.
+3. **C7**: the reconciler, then Stryker, then survivor-driven reconciler tests.
+
+C8 follows as its own small commit.
+
+The C6 commit message has to state that the shortened-id classification is carried over on purpose: a shortened but still parseable id counts as a deliberate rename, not a mid-edit fragment. That behaviour lives in `hasFragment` and in the `read(currentLine) !== priorValue` comparison, and the detector inherits both verbatim. Without the note, a future reader could mistake it for an extraction accident and "fix" a limitation that was reviewed and deliberately kept.
 
