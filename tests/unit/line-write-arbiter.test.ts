@@ -331,8 +331,9 @@ describe('LineWriteArbiter: dependency granularity', () => {
 		const proposed = '- [ ] Task \u26D4 abc123,def456';
 		const result = arbiter.setLine(0, proposed);
 
-		expect(result).toContain('def456');
-		expect(result).not.toContain('abc123');
+		// Asserted as an exact string, not by membership, so that a
+		// reordering of the ids inside the marker cannot pass unnoticed.
+		expect(result).toBe('- [ ] Task \u26D4 def456');
 	});
 
 	it('does not re-add a suppressed dependency when the proposal does not request it either', () => {
@@ -483,8 +484,9 @@ describe('LineWriteArbiter: verified untouched removal is allowed (fix for outde
 		// under the parent) while keeping child1.
 		const result = arbiter.setLine(0, '- [ ] Parent \u26D4 child1');
 
-		expect(result).toContain('child1');
-		expect(result).not.toContain('child2');
+		// Asserted as an exact string, not by membership, so that a
+		// reordering of the ids inside the marker cannot pass unnoticed.
+		expect(result).toBe('- [ ] Parent \u26D4 child1');
 	});
 
 	it('does not treat a marker removed via the verification gate as suppressed on the following pass', () => {
@@ -1129,5 +1131,92 @@ describe('LineWriteArbiter: seedFromText', () => {
 
 		expect(() => arbiter.getFrozenIdForCursorLine()).not.toThrow();
 		expect(arbiter.getFrozenIdForCursorLine()).toBeNull();
+	});
+});
+
+describe('LineWriteArbiter: precedence and ordering pinned before the split', () => {
+	it('keeps a hand-edited marker frozen even once the same pass verifies it', () => {
+		const arbiter = createArbiter();
+		const lines = ['- [ ] Task \u{1F4C5} 2026-01-01'];
+		let target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+		arbiter.endPass();
+
+		// The user retypes the date. The value no longer matches the
+		// snapshot, so this pass records the due marker as suppressed.
+		lines[0] = '- [ ] Task \u{1F4C5} 2026-06-15';
+		target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+		arbiter.endPass();
+
+		// The caret has not moved, so the suppression survives. This pass
+		// finds the line exactly as the previous one left it, which makes
+		// the very same marker type verified as well.
+		target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+
+		// Suppression outranks verification: the plugin's proposal to
+		// change the date is refused and the user's value stays.
+		const result = arbiter.setLine(0, '- [ ] Task \u{1F4C5} 2027-12-31');
+
+		expect(result).toBe('- [ ] Task \u{1F4C5} 2026-06-15');
+		expect(target.setLine).not.toHaveBeenCalled();
+	});
+
+	it('keeps a hand-restored dependency in place even once the same pass verifies it', () => {
+		const arbiter = createArbiter();
+		const lines = ['- [ ] Parent \u26D4 abc123'];
+		let target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+		arbiter.endPass();
+
+		// The user deletes the dependency, which suppresses the id.
+		lines[0] = '- [ ] Parent';
+		target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+		arbiter.endPass();
+
+		// The user types it back by hand. The snapshot picks the id up
+		// again at the end of this pass.
+		lines[0] = '- [ ] Parent \u26D4 abc123';
+		target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+		arbiter.endPass();
+
+		// Now the id is suppressed from the deletion and verified from the
+		// restoration at the same time, because the caret never left the line.
+		target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+		expect(arbiter.getSuppressedDepIds().has('abc123')).toBe(true);
+
+		// Suppression outranks verification: a proposal to drop the
+		// dependency is refused, and the line is left untouched.
+		const result = arbiter.setLine(0, '- [ ] Parent');
+
+		expect(result).toBe('- [ ] Parent \u26D4 abc123');
+		expect(target.setLine).not.toHaveBeenCalled();
+	});
+
+	it('decides dependencies from the untouched proposal, not from the marker-corrected line', () => {
+		const arbiter = createArbiter();
+		const lines = ['- [ ] Parent \u{1F4C5} 2026-01-01 \u26D4 abc123'];
+		let target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+		arbiter.endPass();
+
+		// One keystroke changes the date and drops the dependency, so the
+		// pass suppresses both the due marker and the dependency id.
+		lines[0] = '- [ ] Parent \u{1F4C5} 2026-06-15';
+		target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+
+		// The proposal changes the date again, restores the suppressed
+		// dependency, and adds a fresh one. Marker correction rewrites the
+		// date first; the dependency decision that follows must still read
+		// its inputs from the original current and proposed strings.
+		const result = arbiter.setLine(0, '- [ ] Parent \u{1F4C5} 2027-12-31 \u26D4 abc123,zzz999');
+
+		expect(result).toBe('- [ ] Parent \u{1F4C5} 2026-06-15 \u26D4 zzz999');
+		expect(target.setLine).toHaveBeenCalledWith(0, '- [ ] Parent \u{1F4C5} 2026-06-15 \u26D4 zzz999');
 	});
 });
