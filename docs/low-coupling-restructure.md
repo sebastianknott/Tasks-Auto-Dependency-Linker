@@ -4,7 +4,7 @@ Plan document for the task "Restructure code to better reflect low coupling, hig
 
 This file records the analysis, the target structure, and the commit sequence. It carries no task state; execution tracking lives outside the repository.
 
-Status: planned, not started. Analysis performed against commit `0088ae9`. Scope and naming settled before the work started, see section 7.
+Status: done. Analysis performed against commit `0088ae9`, executed across C1 to C11. Scope and naming settled before the work started, see section 7. Section 9 records the design review that reshaped C6 to C8 mid-flight.
 
 ## 1. Baseline measurements
 
