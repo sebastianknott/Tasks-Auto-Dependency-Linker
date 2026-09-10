@@ -1,24 +1,43 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CacheCoordinator } from '../../src/cache/cache-coordinator';
-import { IdCache, DepCache } from '../../src/cache/marker-cache';
-import { MarkerScanner } from '../../src/parsing/marker-scanner';
-import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
-import { TaskParser } from '../../src/parsing/task-parser';
-import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
-import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
+import type { VaultReader } from '../../src/cache/cache-coordinator';
+import type { IdCache, DepCache } from '../../src/cache/marker-cache';
+import type { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
 import { TFile, TFolder } from 'obsidian';
-import type { TAbstractFile } from 'obsidian';
+
+/**
+ * Solitary unit tests for CacheCoordinator.
+ *
+ * Every collaborator is a stub. The subject owns no parsing of its own, so the
+ * only thing worth asserting is which collaborator method it called, with what
+ * arguments, and in what order. Driving real caches here would pin
+ * MarkerScanner and TaskParser instead of the coordinator.
+ */
+
+type MarkerCacheStub = {
+	buildFromFiles: ReturnType<typeof vi.fn>;
+	updateForFile: ReturnType<typeof vi.fn>;
+	pruneFile: ReturnType<typeof vi.fn>;
+};
+
+type SyncCacheStub = MarkerCacheStub;
+
+function markerCacheStub(): MarkerCacheStub {
+	return {
+		buildFromFiles: vi.fn(),
+		updateForFile: vi.fn(),
+		pruneFile: vi.fn(),
+	};
+}
 
 describe('CacheCoordinator', () => {
-	let idCache: IdCache;
-	let depCache: DepCache;
-	let syncCache: MetadataSyncCache;
+	let idCache: MarkerCacheStub;
+	let depCache: MarkerCacheStub;
+	let syncCache: SyncCacheStub;
 	let contents: Map<string, string>;
 	let markdownFiles: TFile[];
-	let vault: {
-		cachedRead(file: TFile): Promise<string>;
-		getMarkdownFiles(): TFile[];
-	};
+	let cachedRead: ReturnType<typeof vi.fn>;
+	let getMarkdownFiles: ReturnType<typeof vi.fn>;
 	let coordinator: CacheCoordinator;
 
 	function makeFile(path: string): TFile {
@@ -34,161 +53,218 @@ describe('CacheCoordinator', () => {
 	}
 
 	beforeEach(() => {
-		const scanner = new MarkerScanner();
-		idCache = new IdCache(scanner);
-		depCache = new DepCache(scanner);
-		const parser = new TaskParser();
-		const metadataParser = new TaskMetadataParser();
-		const relAnalyzer = new RelationshipAnalyzer(parser);
-		syncCache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
+		idCache = markerCacheStub();
+		depCache = markerCacheStub();
+		syncCache = markerCacheStub();
 		contents = new Map();
 		markdownFiles = [];
-		vault = {
-			cachedRead: async (file: TFile): Promise<string> =>
-				contents.get(file.path) ?? '',
-			getMarkdownFiles: (): TFile[] => markdownFiles,
-		};
-		coordinator = new CacheCoordinator(idCache, depCache, syncCache, vault);
+		// The stub answers from an explicit per-test map rather than
+		// reimplementing a vault, so a test states exactly what the
+		// coordinator sees on disk.
+		cachedRead = vi.fn((file: TFile) => Promise.resolve(contents.get(file.path) ?? ''));
+		getMarkdownFiles = vi.fn(() => markdownFiles);
+		const vault: VaultReader = { cachedRead, getMarkdownFiles };
+		coordinator = new CacheCoordinator(
+			idCache as unknown as IdCache,
+			depCache as unknown as DepCache,
+			syncCache as unknown as MetadataSyncCache,
+			vault,
+		);
 	});
 
 	describe('buildAll', () => {
-		it('populates all three caches from file content', async () => {
-			contents.set(
-				'a.md',
-				'- [ ] Parent \u{1F4C5} 2025-01-01\n\t- [ ] Child \u{1F194} aaa \u{1F4C5} 2025-01-01 \u26D4 bbb',
-			);
+		it('reads every file and hands the same entry list to all three caches', async () => {
+			contents.set('a.md', 'content of a');
+			contents.set('b.md', 'content of b');
+
+			await coordinator.buildAll([makeFile('a.md'), makeFile('b.md')]);
+
+			const expected = [
+				{ path: 'a.md', content: 'content of a' },
+				{ path: 'b.md', content: 'content of b' },
+			];
+			expect(idCache.buildFromFiles).toHaveBeenCalledWith(expected);
+			expect(depCache.buildFromFiles).toHaveBeenCalledWith(expected);
+			expect(syncCache.buildFromFiles).toHaveBeenCalledWith(expected);
+		});
+
+		it('preserves the order of the files it was given', async () => {
+			contents.set('b.md', 'b');
+			contents.set('a.md', 'a');
+
+			await coordinator.buildAll([makeFile('b.md'), makeFile('a.md')]);
+
+			expect(idCache.buildFromFiles).toHaveBeenCalledWith([
+				{ path: 'b.md', content: 'b' },
+				{ path: 'a.md', content: 'a' },
+			]);
+		});
+
+		it('reads each file exactly once, not once per cache', async () => {
+			contents.set('a.md', 'a');
+
 			await coordinator.buildAll([makeFile('a.md')]);
-			expect(idCache.getAll()).toEqual(new Set(['aaa']));
-			expect(depCache.getAll()).toEqual(new Set(['bbb']));
-			expect(syncCache.get('aaa')?.due).toBe('2025-01-01');
+
+			expect(cachedRead).toHaveBeenCalledTimes(1);
+		});
+
+		it('builds all three caches from an empty list when given no files', async () => {
+			await coordinator.buildAll([]);
+
+			expect(cachedRead).not.toHaveBeenCalled();
+			expect(idCache.buildFromFiles).toHaveBeenCalledWith([]);
+			expect(depCache.buildFromFiles).toHaveBeenCalledWith([]);
+			expect(syncCache.buildFromFiles).toHaveBeenCalledWith([]);
+		});
+
+		it('does not update or prune anything', async () => {
+			contents.set('a.md', 'a');
+
+			await coordinator.buildAll([makeFile('a.md')]);
+
+			expect(idCache.updateForFile).not.toHaveBeenCalled();
+			expect(idCache.pruneFile).not.toHaveBeenCalled();
+			expect(syncCache.updateForFile).not.toHaveBeenCalled();
+			expect(syncCache.pruneFile).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('updateForFile', () => {
-		it('refreshes one file without touching others', async () => {
-			contents.set('a.md', '- [ ] P \u{1F194} aaa');
-			contents.set('b.md', '- [ ] P \u{1F194} bbb');
-			await coordinator.buildAll([makeFile('a.md'), makeFile('b.md')]);
+		it('reads the file from the vault and updates all three caches with its path and content', async () => {
+			contents.set('a.md', 'fresh content');
 
-			contents.set('a.md', '- [ ] P \u{1F194} ccc');
 			await coordinator.updateForFile(makeFile('a.md'));
 
-			expect(idCache.getAll()).toEqual(new Set(['ccc', 'bbb']));
+			expect(cachedRead).toHaveBeenCalledTimes(1);
+			expect(idCache.updateForFile).toHaveBeenCalledWith('a.md', 'fresh content');
+			expect(depCache.updateForFile).toHaveBeenCalledWith('a.md', 'fresh content');
+			expect(syncCache.updateForFile).toHaveBeenCalledWith('a.md', 'fresh content');
 		});
 
-		it('still updates all three caches (idCache, depCache, syncCache) after the delegation refactor', async () => {
-			contents.set(
-				'a.md',
-				'- [ ] Parent \u{1F4C5} 2025-01-01\n\t- [ ] Child \u{1F194} aaa \u{1F4C5} 2025-01-01 \u26D4 bbb',
-			);
-			await coordinator.buildAll([makeFile('a.md')]);
+		it('passes the file it was handed to cachedRead', async () => {
+			const file = makeFile('a.md');
 
-			contents.set(
-				'a.md',
-				'- [ ] Parent \u{1F4C5} 2025-02-02\n\t- [ ] Child \u{1F194} ccc \u{1F4C5} 2025-02-02 \u26D4 ddd',
-			);
+			await coordinator.updateForFile(file);
+
+			expect(cachedRead).toHaveBeenCalledWith(file);
+		});
+
+		it('does not rebuild or prune', async () => {
 			await coordinator.updateForFile(makeFile('a.md'));
 
-			expect(idCache.getAll()).toEqual(new Set(['ccc']));
-			expect(depCache.getAll()).toEqual(new Set(['ddd']));
-			expect(syncCache.get('ccc')?.due).toBe('2025-02-02');
+			expect(idCache.buildFromFiles).not.toHaveBeenCalled();
+			expect(idCache.pruneFile).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('updateFromLiveContent', () => {
-		it('populates idCache and depCache from the given content synchronously, without reading from the vault', () => {
-			const readSpy = vi.spyOn(vault, 'cachedRead');
+		it('updates the id and dependency caches from the given content', () => {
+			coordinator.updateFromLiveContent('a.md', 'live buffer');
 
-			coordinator.updateFromLiveContent(
-				'a.md',
-				'- [ ] Parent \u26D4 dep1\n\t- [ ] Child \u{1F194} live1',
-			);
-
-			expect(idCache.getAll()).toEqual(new Set(['live1']));
-			expect(depCache.getAll()).toEqual(new Set(['dep1']));
-			expect(readSpy).not.toHaveBeenCalled();
+			expect(idCache.updateForFile).toHaveBeenCalledWith('a.md', 'live buffer');
+			expect(depCache.updateForFile).toHaveBeenCalledWith('a.md', 'live buffer');
 		});
 
-		it('replaces stale entries for that path and leaves other files\' entries untouched', async () => {
-			contents.set('a.md', '- [ ] P \u{1F194} aaa');
-			contents.set('b.md', '- [ ] P \u{1F194} bbb');
-			await coordinator.buildAll([makeFile('a.md'), makeFile('b.md')]);
+		it('leaves the sync cache alone, so a mid-edit buffer cannot reseed lastSynced', () => {
+			coordinator.updateFromLiveContent('a.md', 'live buffer');
 
-			coordinator.updateFromLiveContent('a.md', '- [ ] P \u{1F194} ccc');
+			expect(syncCache.updateForFile).not.toHaveBeenCalled();
+			expect(syncCache.buildFromFiles).not.toHaveBeenCalled();
+			expect(syncCache.pruneFile).not.toHaveBeenCalled();
+		});
 
-			expect(idCache.getAll()).toEqual(new Set(['ccc', 'bbb']));
+		it('does not read from the vault', () => {
+			coordinator.updateFromLiveContent('a.md', 'live buffer');
+
+			expect(cachedRead).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('forgetPath', () => {
-		it('drops the exact path from all three caches', async () => {
-			contents.set(
-				'a.md',
-				'- [ ] Parent \u{1F4C5} 2025-01-01\n\t- [ ] Child \u{1F194} aaa \u26D4 bbb',
-			);
-			await coordinator.buildAll([makeFile('a.md')]);
+		it('prunes the path from all three caches', () => {
+			coordinator.forgetPath('notes/a.md');
 
-			coordinator.forgetPath('a.md');
-
-			expect(idCache.getAll()).toEqual(new Set());
-			expect(depCache.getAll()).toEqual(new Set());
-			expect(syncCache.get('aaa')).toBeUndefined();
+			expect(idCache.pruneFile).toHaveBeenCalledWith('notes/a.md');
+			expect(depCache.pruneFile).toHaveBeenCalledWith('notes/a.md');
+			expect(syncCache.pruneFile).toHaveBeenCalledWith('notes/a.md');
 		});
 
-		it('drops descendants under path + "/" and leaves a sibling path with the same prefix but no separator alone', async () => {
-			contents.set('notes/a.md', '- [ ] P \u{1F194} aaa');
-			contents.set('notes-archive.md', '- [ ] P \u{1F194} bbb');
-			await coordinator.buildAll([
-				makeFile('notes/a.md'),
-				makeFile('notes-archive.md'),
-			]);
-
+		it('passes the path through unchanged, leaving descendant matching to the caches', () => {
 			coordinator.forgetPath('notes');
 
-			expect(idCache.getAll()).toEqual(new Set(['bbb']));
+			expect(idCache.pruneFile).toHaveBeenCalledWith('notes');
 		});
 	});
 
 	describe('handleDelete', () => {
-		it('forgets the deleted path', async () => {
-			contents.set('a.md', '- [ ] P \u{1F194} aaa');
-			await coordinator.buildAll([makeFile('a.md')]);
+		it('forgets the deleted path in all three caches', () => {
+			coordinator.handleDelete(makeFile('a.md'));
 
-			const deleted: TAbstractFile = makeFile('a.md');
-			coordinator.handleDelete(deleted);
-
-			expect(idCache.getAll()).toEqual(new Set());
+			expect(idCache.pruneFile).toHaveBeenCalledWith('a.md');
+			expect(depCache.pruneFile).toHaveBeenCalledWith('a.md');
+			expect(syncCache.pruneFile).toHaveBeenCalledWith('a.md');
 		});
 
-		it('forgets every descendant when a folder is deleted', async () => {
-			contents.set('notes/a.md', '- [ ] P \u{1F194} aaa');
-			await coordinator.buildAll([makeFile('notes/a.md')]);
-
+		it('forgets a folder path the same way, without rebuilding', () => {
 			coordinator.handleDelete(makeFolder('notes'));
 
-			expect(idCache.getAll()).toEqual(new Set());
+			expect(idCache.pruneFile).toHaveBeenCalledWith('notes');
+			expect(idCache.buildFromFiles).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('handleRename', () => {
-		it('forgets the old path and re-indexes the file under the new path', async () => {
-			contents.set('old.md', '- [ ] P \u{1F194} aaa');
-			await coordinator.buildAll([makeFile('old.md')]);
+		it('forgets the old path and re-indexes the renamed file', async () => {
+			contents.set('new.md', 'moved content');
 
-			contents.set('new.md', '- [ ] P \u{1F194} bbb');
-			markdownFiles = [makeFile('new.md')];
 			await coordinator.handleRename(makeFile('new.md'), 'old.md');
 
-			expect(idCache.getAll()).toEqual(new Set(['bbb']));
+			expect(idCache.pruneFile).toHaveBeenCalledWith('old.md');
+			expect(idCache.updateForFile).toHaveBeenCalledWith('new.md', 'moved content');
+			expect(syncCache.updateForFile).toHaveBeenCalledWith('new.md', 'moved content');
 		});
 
-		it('rebuilds the whole vault cache when a folder is renamed', async () => {
-			contents.set('newfolder/a.md', '- [ ] P \u{1F194} folder1');
+		it('prunes the old path before re-indexing, so the reindex is not undone', async () => {
+			contents.set('new.md', 'moved content');
+			const order: string[] = [];
+			idCache.pruneFile.mockImplementation(() => order.push('prune'));
+			idCache.updateForFile.mockImplementation(() => order.push('update'));
+
+			await coordinator.handleRename(makeFile('new.md'), 'old.md');
+
+			expect(order).toEqual(['prune', 'update']);
+		});
+
+		it('does not rebuild the vault when a single file is renamed', async () => {
+			await coordinator.handleRename(makeFile('new.md'), 'old.md');
+
+			expect(getMarkdownFiles).not.toHaveBeenCalled();
+			expect(idCache.buildFromFiles).not.toHaveBeenCalled();
+		});
+
+		it('rebuilds every cache from the whole vault when a folder is renamed', async () => {
+			contents.set('newfolder/a.md', 'a');
 			markdownFiles = [makeFile('newfolder/a.md')];
 
 			await coordinator.handleRename(makeFolder('newfolder'), 'oldfolder');
 
-			expect(idCache.getAll()).toEqual(new Set(['folder1']));
+			expect(getMarkdownFiles).toHaveBeenCalledTimes(1);
+			expect(idCache.buildFromFiles).toHaveBeenCalledWith([
+				{ path: 'newfolder/a.md', content: 'a' },
+			]);
+			expect(syncCache.buildFromFiles).toHaveBeenCalledWith([
+				{ path: 'newfolder/a.md', content: 'a' },
+			]);
+		});
+
+		it('does not prune the old folder path, because the rebuild replaces every entry', async () => {
+			markdownFiles = [];
+
+			await coordinator.handleRename(makeFolder('newfolder'), 'oldfolder');
+
+			expect(idCache.pruneFile).not.toHaveBeenCalled();
+			expect(depCache.pruneFile).not.toHaveBeenCalled();
+			expect(syncCache.pruneFile).not.toHaveBeenCalled();
 		});
 	});
 });
