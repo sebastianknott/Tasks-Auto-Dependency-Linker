@@ -13,7 +13,7 @@ type PluginInternals = any;
 
 /**
  * Builds a structural fake `ViewUpdate` for driving the CursorLineWatcher
- * extension registered by `main.ts`'s `buildComponents()`. Only the fields
+ * extension registered by `main.ts`. Only the fields
  * `CursorLineWatcher.handle` actually reads are populated.
  */
 function fakeCursorUpdate(options: { selectionSet: boolean; lineForHead: number }): ViewUpdate {
@@ -202,7 +202,7 @@ describe('TasksAutoDependencyLinker', () => {
 			// After layout ready, an editor-change that assigns a NEW parent
 			// should generate an ID that is NOT 'aaa111' (because it's already cached).
 			// We verify by checking the cache was populated via integration.
-			const buildSpy = vi.spyOn(p.idCache, 'buildFromFiles');
+			const buildSpy = vi.spyOn(p.graph.idCache, 'buildFromFiles');
 
 			// Trigger a second layout-ready to check it calls buildFromFiles
 			await p._layoutReadyCb();
@@ -218,7 +218,7 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			const buildSpy = vi.spyOn(p.idCache, 'buildFromFiles');
+			const buildSpy = vi.spyOn(p.graph.idCache, 'buildFromFiles');
 			await p._layoutReadyCb();
 
 			expect(buildSpy).toHaveBeenCalledWith([]);
@@ -280,14 +280,14 @@ describe('TasksAutoDependencyLinker', () => {
 
 			const seedFile = new TFile();
 			seedFile.path = seedPath;
-			await p.coordinator.updateForFile(seedFile);
-			expect(p.idCache.getAll().has(id)).toBe(true);
+			await p.graph.coordinator.updateForFile(seedFile);
+			expect(p.graph.idCache.getAll().has(id)).toBe(true);
 
 			const deleteHandlers = p._vaultEmitter.getHandlers('delete');
 			expect(deleteHandlers.length).toBe(1);
 			deleteHandlers[0].cb(makeDeleteTarget(seedFile));
 
-			expect(p.idCache.getAll().has(id)).toBe(false);
+			expect(p.graph.idCache.getAll().has(id)).toBe(false);
 		});
 	});
 
@@ -301,8 +301,8 @@ describe('TasksAutoDependencyLinker', () => {
 
 			const oldFile = new TFile();
 			oldFile.path = 'old.md';
-			await p.coordinator.updateForFile(oldFile);
-			expect(p.idCache.getAll().has('renamed1')).toBe(true);
+			await p.graph.coordinator.updateForFile(oldFile);
+			expect(p.graph.idCache.getAll().has('renamed1')).toBe(true);
 
 			const renamedFile = new TFile();
 			renamedFile.path = 'new.md';
@@ -312,7 +312,7 @@ describe('TasksAutoDependencyLinker', () => {
 			await renameHandlers[0].cb(renamedFile, 'old.md');
 
 			// old path's contribution is gone, new path's content re-indexed
-			expect(p.idCache.getAll().has('renamed1')).toBe(true);
+			expect(p.graph.idCache.getAll().has('renamed1')).toBe(true);
 		});
 
 		it('rebuilds the whole vault cache when a TFolder is renamed', async () => {
@@ -324,7 +324,7 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			const buildSpy = vi.spyOn(p.idCache, 'buildFromFiles');
+			const buildSpy = vi.spyOn(p.graph.idCache, 'buildFromFiles');
 
 			const renamedFolder = new TFolder();
 			renamedFolder.path = 'newfolder';
@@ -364,7 +364,7 @@ describe('TasksAutoDependencyLinker', () => {
 			p.app.vault.cachedRead = readSpy;
 
 			await plugin.onload();
-			const seedSpy = vi.spyOn(p.arbiter, 'seedFromText');
+			const seedSpy = vi.spyOn(p.graph.arbiter, 'seedFromText');
 
 			const fileOpenHandlers = p._workspaceEmitter.getHandlers('file-open');
 			expect(fileOpenHandlers.length).toBe(1);
@@ -428,7 +428,7 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			const excludeSpy = vi.spyOn(p.idCache, 'getAllExcluding');
+			const excludeSpy = vi.spyOn(p.graph.idCache, 'getAllExcluding');
 
 			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
 			vi.useFakeTimers();
@@ -453,7 +453,7 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			const excludeSpy = vi.spyOn(p.idCache, 'getAllExcluding');
+			const excludeSpy = vi.spyOn(p.graph.idCache, 'getAllExcluding');
 
 			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
 			vi.useFakeTimers();
@@ -481,7 +481,7 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			const liveSpy = vi.spyOn(p.coordinator, 'updateFromLiveContent');
+			const liveSpy = vi.spyOn(p.graph.coordinator, 'updateFromLiveContent');
 
 			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
 			vi.useFakeTimers();
@@ -510,7 +510,7 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			const liveSpy = vi.spyOn(p.coordinator, 'updateFromLiveContent');
+			const liveSpy = vi.spyOn(p.graph.coordinator, 'updateFromLiveContent');
 
 			const wsHandlers = p._workspaceEmitter.getHandlers('editor-change');
 			vi.useFakeTimers();
@@ -543,10 +543,10 @@ describe('TasksAutoDependencyLinker', () => {
 
 			await plugin.onload();
 
-			vi.spyOn(p.processor, 'processAllLines').mockImplementation(() => {
+			vi.spyOn(p.graph.processor, 'processAllLines').mockImplementation(() => {
 				callOrder.push('processAllLines');
 			});
-			vi.spyOn(p.coordinator, 'updateFromLiveContent').mockImplementation(() => {
+			vi.spyOn(p.graph.coordinator, 'updateFromLiveContent').mockImplementation(() => {
 				callOrder.push('updateFromLiveContent');
 			});
 
@@ -560,7 +560,7 @@ describe('TasksAutoDependencyLinker', () => {
 		});
 	});
 
-	describe('cursor-line-watcher wiring (buildComponents)', () => {
+	describe('cursor-line-watcher wiring', () => {
 		it('registers exactly one editor extension during onload', async () => {
 			const p = plugin as PluginInternals;
 
