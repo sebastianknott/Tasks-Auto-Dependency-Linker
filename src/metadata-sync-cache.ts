@@ -10,7 +10,7 @@
  * id and dependency caches.
  */
 
-import type { FileEntry } from './id-engine';
+import type { FileEntry } from './types';
 import type { RelationshipAnalyzer } from './relationship-analyzer';
 import type { TaskParser } from './task-parser';
 import type { Priority, TaskMetadataParser } from './task-metadata-parser';

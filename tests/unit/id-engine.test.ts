@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { IdEngine, IdCache, DepCache, MarkerCache } from '../../src/id-engine';
-import type { FileEntry } from '../../src/id-engine';
+import type { FileEntry } from '../../src/types';
 
 /**
  * Concrete subclass for testing the abstract MarkerCache.

@@ -42,6 +42,12 @@ export interface EditorLike extends LineEditor {
 	setSelection(anchor: EditorPositionLike, head: EditorPositionLike): void;
 }
 
+/** A vault file entry with its path and content. */
+export interface FileEntry {
+	readonly path: string;
+	readonly content: string;
+}
+
 /**
  * Read-only interface for querying a vault-wide marker cache.
  *

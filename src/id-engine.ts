@@ -6,6 +6,7 @@
  */
 
 import { TaskParser } from './task-parser';
+import type { FileEntry } from './types';
 
 /** Characters used for ID generation: a-z, 0-9. */
 const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -76,12 +77,6 @@ export class IdEngine {
 		}
 		return id;
 	}
-}
-
-/** A vault file entry with its path and content. */
-export interface FileEntry {
-	readonly path: string;
-	readonly content: string;
 }
 
 /**
