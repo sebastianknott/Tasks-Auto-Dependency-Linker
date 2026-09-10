@@ -1,7 +1,32 @@
 import tseslint from 'typescript-eslint';
 import obsidianmd from "eslint-plugin-obsidianmd";
+import importX, { createNodeResolver } from "eslint-plugin-import-x";
 import globals from "globals";
 import { globalIgnores } from "eslint/config";
+
+/**
+ * The layer folders under `src/`, ordered from the most depended-upon to the
+ * least. A module may import from its own folder, from any folder earlier in
+ * this list, and from `types.ts` or `utils.ts`. It may never import from a
+ * folder later in the list.
+ *
+ *     obsidian -> processing -> editing -> linking -> cache -> parsing
+ *
+ * `main.ts` is the composition root. It appears in no zone target below, so it
+ * stays free to reach every layer.
+ */
+const LAYERS = ['parsing', 'cache', 'linking', 'editing', 'processing', 'obsidian'];
+
+/**
+ * One `import-x/no-restricted-paths` zone per layer that has something above it,
+ * forbidding every folder that sits later in {@link LAYERS}. `obsidian` is the
+ * top layer and gets no zone, since nothing is above it to forbid.
+ */
+const layerZones = LAYERS.slice(0, -1).map((layer, index) => ({
+	target: `./src/${layer}`,
+	from: LAYERS.slice(index + 1).map((higher) => `./src/${higher}`),
+	message: `src/${layer} may not import from a higher layer. Layer order: ${LAYERS.join(' <- ')}.`,
+}));
 
 export default tseslint.config(
 	{
@@ -26,6 +51,25 @@ export default tseslint.config(
 		files: ['src/**/*.ts'],
 		plugins: {
 			'@typescript-eslint': tseslint.plugin,
+			'import-x': importX,
+		},
+		settings: {
+			// `no-cycle` walks the import graph by parsing each imported file,
+			// and skips any file whose extension is missing from this list. The
+			// default is `.js`, `.mjs` and `.cjs`, so leaving it out turns the
+			// rule into a silent no-op on a TypeScript-only codebase.
+			'import-x/extensions': ['.ts', '.mjs', '.cjs', '.js'],
+
+			// The bundled node resolver defaults to `.mjs`, `.cjs`, `.js`,
+			// `.json` and `.node`. Without `.ts` in that list every relative
+			// import in this project stays unresolved, and both rules below
+			// bail out before they compare anything, which makes them silent
+			// no-ops rather than failures.
+			'import-x/resolver-next': [
+				createNodeResolver({
+					extensions: ['.ts', '.mjs', '.cjs', '.js', '.json', '.node'],
+				}),
+			],
 		},
 		rules: {
 			// Clean Code: cyclomatic complexity per function (default 20 is too generous)
@@ -49,6 +93,22 @@ export default tseslint.config(
 
 			// TypeScript: enforce readonly on private members that are never reassigned
 			'@typescript-eslint/prefer-readonly': 'error',
+
+			// Architecture: keep every import inside src/ pointing down the layer
+			// order. See the LAYERS comment at the top of this file.
+			'import-x/no-restricted-paths': ['error', {
+				zones: [
+					...layerZones,
+					{
+						target: './src',
+						from: './src/main.ts',
+						message: 'main.ts is the composition root. Nothing may import it.',
+					},
+				],
+			}],
+
+			// Architecture: no import cycles, at any depth.
+			'import-x/no-cycle': 'error',
 		},
 	},
 	{
