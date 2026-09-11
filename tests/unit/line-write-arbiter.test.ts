@@ -1091,6 +1091,48 @@ describe('LineWriteArbiter: indeterminate (mid-edit) cursor line', () => {
 	});
 });
 
+describe('LineWriteArbiter: blocksIdMinting', () => {
+	it('blocks minting when the id marker is suppressed on a determinate line', () => {
+		const arbiter = createArbiter();
+		const lines = ['- [ ] Task \u{1F194} abc'];
+		let target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+		arbiter.endPass();
+
+		// The id is deleted by hand; the id marker type becomes suppressed
+		// on this line, and the line itself is well-formed, not indeterminate.
+		lines[0] = '- [ ] Task';
+		target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+
+		expect(arbiter.isSuppressed(0, MarkerType.Id)).toBe(true);
+		expect(arbiter.isIndeterminate(0)).toBe(false);
+		expect(arbiter.blocksIdMinting(0)).toBe(true);
+	});
+
+	it('allows minting when neither the id marker is suppressed nor the line is indeterminate', () => {
+		const arbiter = createArbiter();
+		const lines = ['- [ ] Task'];
+		const target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+
+		expect(arbiter.isSuppressed(0, MarkerType.Id)).toBe(false);
+		expect(arbiter.isIndeterminate(0)).toBe(false);
+		expect(arbiter.blocksIdMinting(0)).toBe(false);
+	});
+
+	it('blocks minting when the line is indeterminate even though nothing is suppressed', () => {
+		const arbiter = createArbiter();
+		const lines = ['- [ ] Child \u{1F194}'];
+		const target = createLineEditor(lines);
+		arbiter.beginPass(target, 0, 'file.md');
+
+		expect(arbiter.isSuppressed(0, MarkerType.Id)).toBe(false);
+		expect(arbiter.isIndeterminate(0)).toBe(true);
+		expect(arbiter.blocksIdMinting(0)).toBe(true);
+	});
+});
+
 describe('LineWriteArbiter: seedFromText', () => {
 	it('fills the snapshot without writing anything', () => {
 		const arbiter = createArbiter();

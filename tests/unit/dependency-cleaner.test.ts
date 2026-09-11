@@ -37,6 +37,28 @@ describe('DependencyCleaner', () => {
 		});
 	});
 
+	describe('removeStaleDeps with managedIds', () => {
+		it.each<[string, string, Set<string>, Set<string> | undefined, string]>([
+			[
+				'removes a dep that is in managedIds and not desired',
+				'- [ ] Parent ⛔ abc123',
+				new Set(),
+				new Set(['abc123']),
+				'- [ ] Parent',
+			],
+			[
+				'leaves a dep untouched when managedIds does not include it, even though it is not desired',
+				'- [ ] Parent ⛔ abc123',
+				new Set(),
+				new Set(['other999']),
+				'- [ ] Parent ⛔ abc123',
+			],
+		])('%s', (_description, line, desiredSet, managedIds, expected) => {
+			const cleaner = new DependencyCleaner(parser);
+			expect(cleaner.removeStaleDeps(line, desiredSet, managedIds)).toBe(expected);
+		});
+	});
+
 	describe('isIdReferencedAsDep', () => {
 		it.each<[string, string[], string, boolean]>([
 			[
@@ -66,6 +88,38 @@ describe('DependencyCleaner', () => {
 		])('%s', (_description, lines, id, expected) => {
 			const cleaner = new DependencyCleaner(parser);
 			expect(cleaner.isIdReferencedAsDep(lines, id)).toBe(expected);
+		});
+	});
+
+	describe('removeDanglingDeps', () => {
+		it.each<[string, string, Set<string>, string]>([
+			[
+				'keeps a dep whose id is known',
+				'- [ ] Parent ⛔ abc123',
+				new Set(['abc123']),
+				'- [ ] Parent ⛔ abc123',
+			],
+			[
+				'removes a dep whose id is not known',
+				'- [ ] Parent ⛔ abc123',
+				new Set(),
+				'- [ ] Parent',
+			],
+			[
+				'removes only the unknown id from a mixed list, keeping the known one',
+				'- [ ] Parent ⛔ abc123,def456',
+				new Set(['abc123']),
+				'- [ ] Parent ⛔ abc123',
+			],
+			[
+				'returns line unchanged when no deps exist',
+				'- [ ] Parent',
+				new Set(),
+				'- [ ] Parent',
+			],
+		])('%s', (_description, line, knownIds, expected) => {
+			const cleaner = new DependencyCleaner(parser);
+			expect(cleaner.removeDanglingDeps(line, knownIds)).toBe(expected);
 		});
 	});
 });

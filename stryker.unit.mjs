@@ -15,7 +15,7 @@ import base from './stryker.config.mjs';
 export default {
 	...base,
 	vitest: { ...base.vitest, configFile: 'vitest.unit.config.ts' },
-	thresholds: { ...base.thresholds, break: 96 },
+	thresholds: { ...base.thresholds, break: 100 },
 	incrementalFile: 'reports/stryker-incremental-unit.json',
 	jsonReporter: { fileName: 'reports/mutation/mutation-unit.json' },
 	htmlReporter: { fileName: 'reports/mutation/mutation-unit.html' },
