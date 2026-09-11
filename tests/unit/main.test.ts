@@ -7,12 +7,52 @@ import { PluginTriggers } from '../../src/obsidian/plugin-triggers';
 import { Debounce } from '../../src/utils';
 import TasksAutoDependencyLinker from '../../src/main';
 
-const holder = vi.hoisted(() => ({
-	graphState: { current: undefined },
-	indentState: { current: undefined },
-	debounceState: { current: undefined },
-	watcherState: { current: undefined },
-	triggersState: { current: undefined },
+interface FakeGraph {
+	coordinator: { updateFromLiveContent: ReturnType<typeof vi.fn> };
+	arbiter: object;
+	processor: { processAllLines: ReturnType<typeof vi.fn> };
+}
+
+interface FakeIndentReader {
+	read: ReturnType<typeof vi.fn>;
+}
+
+interface FakeDebounce {
+	call: ReturnType<typeof vi.fn>;
+	cancel: ReturnType<typeof vi.fn>;
+}
+
+interface FakeWatcher {
+	extension: ReturnType<typeof vi.fn>;
+	reset: ReturnType<typeof vi.fn>;
+}
+
+interface FakeTriggers {
+	register: ReturnType<typeof vi.fn>;
+}
+
+interface Holder {
+	graphState: { current: FakeGraph };
+	indentState: { current: FakeIndentReader };
+	debounceState: { current: FakeDebounce };
+	watcherState: { current: FakeWatcher };
+	triggersState: { current: FakeTriggers };
+}
+
+// The slots carry a placeholder so their type is the fake, never undefined. Every
+// test overwrites them in beforeEach, so no test ever observes a placeholder.
+const holder = vi.hoisted((): Holder => ({
+	graphState: {
+		current: {
+			coordinator: { updateFromLiveContent: vi.fn() },
+			arbiter: {},
+			processor: { processAllLines: vi.fn() },
+		},
+	},
+	indentState: { current: { read: vi.fn() } },
+	debounceState: { current: { call: vi.fn(), cancel: vi.fn() } },
+	watcherState: { current: { extension: vi.fn(), reset: vi.fn() } },
+	triggersState: { current: { register: vi.fn() } },
 }));
 
 vi.mock('../../src/obsidian/component-graph', () => ({
@@ -35,11 +75,7 @@ vi.mock('../../src/obsidian/plugin-triggers', () => ({
 	PluginTriggers: vi.fn(() => holder.triggersState.current),
 }));
 
-function createFakeGraph(order: string[]): {
-	coordinator: { updateFromLiveContent: ReturnType<typeof vi.fn> };
-	arbiter: object;
-	processor: { processAllLines: ReturnType<typeof vi.fn> };
-} {
+function createFakeGraph(order: string[]): FakeGraph {
 	return {
 		coordinator: {
 			updateFromLiveContent: vi.fn(() => {
@@ -55,18 +91,29 @@ function createFakeGraph(order: string[]): {
 	};
 }
 
-function createFakeDebounce(): { call: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn> } {
+function createFakeDebounce(): FakeDebounce {
 	return {
 		call: vi.fn(),
 		cancel: vi.fn(),
 	};
 }
 
-function createFakeWatcher(): { extension: ReturnType<typeof vi.fn>; reset: ReturnType<typeof vi.fn> } {
+function createFakeWatcher(): FakeWatcher {
 	return {
 		extension: vi.fn(),
 		reset: vi.fn(),
 	};
+}
+
+// The plugin builds the Debounce and the CursorLineWatcher itself, so the only
+// route to the private processActiveEditor and to the line-change handler is the
+// callback each constructor received.
+function captureCallback(calls: readonly (readonly unknown[])[]): () => void {
+	const first = calls[0]?.[0];
+	if (typeof first !== 'function') {
+		throw new Error('the constructor was never called with a callback');
+	}
+	return first as () => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,7 +192,7 @@ describe('TasksAutoDependencyLinker (solitary)', () => {
 		async function loadAndCapture(): Promise<() => void> {
 			plugin.app.plugins.enabledPlugins = new Set(['obsidian-tasks-plugin']);
 			await plugin.onload();
-			return vi.mocked(Debounce).mock.calls[0][0];
+			return captureCallback(vi.mocked(Debounce).mock.calls);
 		}
 
 		it('does not process when there is no active markdown view', async () => {
@@ -188,7 +235,7 @@ describe('TasksAutoDependencyLinker (solitary)', () => {
 		async function loadAndCapture(): Promise<() => void> {
 			plugin.app.plugins.enabledPlugins = new Set(['obsidian-tasks-plugin']);
 			await plugin.onload();
-			return vi.mocked(Debounce).mock.calls[0][0];
+			return captureCallback(vi.mocked(Debounce).mock.calls);
 		}
 
 		it('does not update the sync cache when the path is empty', async () => {
@@ -229,7 +276,7 @@ describe('TasksAutoDependencyLinker (solitary)', () => {
 		it('triggers the debounce when the watcher reports a line change', async () => {
 			plugin.app.plugins.enabledPlugins = new Set(['obsidian-tasks-plugin']);
 			await plugin.onload();
-			const onLineChange = vi.mocked(CursorLineWatcher).mock.calls[0][0];
+			const onLineChange = captureCallback(vi.mocked(CursorLineWatcher).mock.calls);
 
 			onLineChange();
 

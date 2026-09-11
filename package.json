@@ -8,7 +8,7 @@
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"lint": "eslint .",
-		"test": "vitest run && stryker run",
+    "test": "vitest run && npm run test:mutation:unit",
 		"test:unit": "vitest run",
 		"test:watch": "vitest",
 		"test:mutation": "stryker run",
