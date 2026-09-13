@@ -7,20 +7,16 @@ import { CursorGuard } from '../../src/editing/cursor-guard';
 import { EditorProcessor } from '../../src/processing/editor-processor';
 
 /**
- * Solitary unit test for EditorProcessor.
+ * EditorProcessor does `new CursorGuard(editor)` inside processAllLines, so
+ * the guard cannot be reached through the constructor the way the other
+ * three collaborators are. This suite replaces the cursor-guard module with
+ * a vitest module mock rather than changing production code to make the
+ * guard injectable.
  *
- * EditorProcessor does `new CursorGuard(editor)` inside processAllLines,
- * so the guard cannot be reached through the constructor the way the other
- * three collaborators are. Per plan section 3.3, this suite replaces the
- * cursor-guard module with a vitest module mock instead of changing
- * production code to make the guard injectable.
- *
- * LinkPass, CleanupPass and LineWriteArbiter are hand-rolled doubles, driven
- * by explicit per-test data. Every stub that participates in the ordering
- * assertion pushes its own name onto a shared `order` array, so the test
- * pins the exact sequence EditorProcessor drives its collaborators in:
- * beginPass, then LinkPass.run, then CleanupPass.run, then endPass, then
- * the guard's restore.
+ * Every stub that participates in the ordering assertion pushes its own name
+ * onto a shared `order` array, so the test pins the exact sequence
+ * EditorProcessor drives its collaborators in: beginPass, then LinkPass.run,
+ * then CleanupPass.run, then endPass, then the guard's restore.
  */
 
 const { guardState } = vi.hoisted((): { guardState: { current: unknown } } => ({

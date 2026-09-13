@@ -10,21 +10,6 @@ import {
 	createRefusingEditor,
 } from '../fixtures/editor';
 
-/**
- * Solitary unit test for TaskLinker.
- *
- * TaskLinker calls exactly these collaborator methods:
- * RelationshipAnalyzer.findParentTask, TaskParser.getTaskId /
- * addIdToLine / addDependencyToLine / getTaskDependencies,
- * IdGenerator.generateUniqueId, and MetadataInheritor.syncFromParent /
- * confirmWrite. Every one of them is replaced below by a hand-rolled
- * vi.fn() double, driven by explicit per-test data. No real
- * RelationshipAnalyzer, TaskParser, IdGenerator or MetadataInheritor is
- * ever constructed, so nothing else in the codebase can be pinned by
- * this file. The LineEditor double comes from the shared fixtures,
- * which hold no production dependencies of their own.
- */
-
 interface FakeParser {
 	getTaskId: Mock<(line: string) => string | null>;
 	addIdToLine: Mock<(line: string, id: string) => string>;

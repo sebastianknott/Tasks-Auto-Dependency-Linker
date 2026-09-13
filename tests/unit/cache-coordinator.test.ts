@@ -5,15 +5,6 @@ import type { IdCache, DepCache } from '../../src/cache/marker-cache';
 import type { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
 import { TFile, TFolder } from 'obsidian';
 
-/**
- * Solitary unit tests for CacheCoordinator.
- *
- * Every collaborator is a stub. The subject owns no parsing of its own, so the
- * only thing worth asserting is which collaborator method it called, with what
- * arguments, and in what order. Driving real caches here would pin
- * MarkerScanner and TaskParser instead of the coordinator.
- */
-
 type MarkerCacheStub = {
 	buildFromFiles: ReturnType<typeof vi.fn>;
 	updateForFile: ReturnType<typeof vi.fn>;

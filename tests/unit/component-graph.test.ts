@@ -8,16 +8,12 @@ import { LineWriteArbiter } from '../../src/editing/line-write-arbiter';
 import { EditorProcessor } from '../../src/processing/editor-processor';
 
 /**
- * Sociable test for ComponentGraph, the single documented exception to the
- * solitary rule in the plan (docs/solitary-unit-coverage.md, section 3.1).
- *
  * ComponentGraph is pure wiring: one constructor, sixteen `new` expressions,
  * cyclomatic complexity 1. Replacing its sixteen collaborators with doubles
- * would only assert the test's own wiring back at itself. Instead this test
- * constructs the real graph and checks that each of its six published
- * readonly fields holds an instance of the expected class. The class under
- * test is the composition, so exercising the real composition is correct
- * here and nowhere else in this suite.
+ * would only assert the test's own wiring back at itself. The class under
+ * test is the composition, so this suite builds the real graph and checks
+ * that each of its six published readonly fields holds an instance of the
+ * expected class.
  */
 
 describe('ComponentGraph', () => {

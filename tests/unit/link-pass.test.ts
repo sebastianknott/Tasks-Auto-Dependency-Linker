@@ -6,19 +6,6 @@ import type { LineWriteArbiter } from '../../src/editing/line-write-arbiter';
 import type { LineEditor } from '../../src/types';
 import { createLineEditor } from '../fixtures/editor';
 
-/**
- * Solitary unit test for LinkPass.
- *
- * LinkPass calls exactly these collaborator methods: TaskLinker.prepareForLinkPass
- * and processLine, TaskParser.getTaskId, MarkerCacheLike.getAll, and
- * LineWriteArbiter.blocksIdMinting. Every one of them is replaced below by a
- * hand rolled vi.fn() double, driven by explicit per test data. No real
- * TaskLinker, TaskParser, MarkerCacheLike implementation or LineWriteArbiter
- * is ever constructed, so nothing else in the codebase can be pinned by this
- * file. The LineEditor double comes from the shared fixtures, which hold no
- * production dependencies of their own.
- */
-
 interface FakeLinker {
 	prepareForLinkPass: Mock<(editor: LineEditor) => void>;
 	processLine: Mock<

@@ -5,12 +5,9 @@ import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
 /**
  * Property suite for the due, scheduled and priority marker regexes owned
  * by TaskMetadataParser. TaskMetadataParser is driven directly here, with
- * no accessor facade in between, because a leakage probe run per section
- * 4.5 of docs/solitary-unit-coverage.md showed that the former
- * accessor-driven version of this suite killed mutants inside TaskParser
- * and TaskMetadataParser: every accessor method for due, scheduled and
- * priority is a one-line delegation to a TaskMetadataParser method, so laws
- * like "remove is idempotent" or "read(remove(line)) is null" are
+ * no accessor facade in between: every accessor method for due, scheduled
+ * and priority is a one-line delegation to a TaskMetadataParser method, so
+ * laws like "remove is idempotent" or "read(remove(line)) is null" are
  * properties of TaskMetadataParser's own regexes, merely observed through
  * that facade. Naming TaskMetadataParser as the subject and calling it
  * directly makes the pinning honest.
@@ -18,8 +15,7 @@ import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
  * The accessor-level behaviour these laws used to share a file with, the
  * hasFragment conjunction that combines a glyph check with a read() call,
  * is genuinely owned by the accessor rather than by TaskMetadataParser, and
- * stays covered by tests/unit/marker-accessor.test.ts, which already
- * exercises it to a full mutation score without this suite's help.
+ * stays covered by tests/unit/marker-accessor.test.ts.
  *
  * All corpus lines are enumerated deterministically from a fixed seed list
  * (no randomness, no time dependent input) so this suite produces identical

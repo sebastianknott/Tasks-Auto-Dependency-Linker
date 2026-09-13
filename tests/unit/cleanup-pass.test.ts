@@ -7,22 +7,6 @@ import type { LineWriteArbiter } from '../../src/editing/line-write-arbiter';
 import { createCorrectingEditor, createLineEditor } from '../fixtures/editor';
 
 /**
- * Solitary unit test for CleanupPass.
- *
- * CleanupPass calls exactly these collaborator methods: DependencyCleaner's
- * removeStaleDeps / removeDanglingDeps / isIdReferencedAsDep,
- * TaskParser's getTaskId / removeIdFromLine, RelationshipAnalyzer's
- * identifyListBlocks / buildRelationshipMap / getDesiredDepsForParent,
- * two MarkerCacheLike instances (idCache, depCache) via getAll /
- * getAllExcluding, and LineWriteArbiter's getSuppressedDepIds /
- * getFrozenDepsForIndeterminateLine / getFrozenIdForCursorLine. Every one
- * of them is replaced below by a hand-rolled vi.fn() double driven by
- * explicit per-test data. No real DependencyCleaner, TaskParser,
- * RelationshipAnalyzer, MarkerCache or LineWriteArbiter is ever
- * constructed, so nothing else in the codebase can be pinned by this
- * file. The LineEditor doubles come from the shared fixtures, which hold
- * no production dependencies of their own.
- *
  * Several tests deliberately place the current block at a non-zero start
  * line (for example start: 3). CleanupPass converts between a
  * block-relative index and a document-relative index three separate

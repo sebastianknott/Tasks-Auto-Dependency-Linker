@@ -4,20 +4,16 @@ import { TaskParser } from '../../src/parsing/task-parser';
 /**
  * Property suite for the id and dependency marker regexes owned by
  * TaskParser. TaskParser is driven directly here, with no accessor facade
- * in between, because a leakage probe run per section 4.5 of
- * docs/solitary-unit-coverage.md showed that the former accessor-driven
- * version of this suite killed 118 mutants inside TaskParser and
- * TaskMetadataParser: every accessor method for id and dependency is a
- * one-line delegation to a TaskParser method, so laws like "remove is
- * idempotent" or "read(remove(line)) is null" are properties of TaskParser's
- * own regexes, merely observed through that facade. Naming TaskParser as
- * the subject and calling it directly makes the pinning honest.
+ * in between: every accessor method for id and dependency is a one-line
+ * delegation to a TaskParser method, so laws like "remove is idempotent" or
+ * "read(remove(line)) is null" are properties of TaskParser's own regexes,
+ * merely observed through that facade. Naming TaskParser as the subject and
+ * calling it directly makes the pinning honest.
  *
  * The accessor-level behaviour these laws used to share a file with, the
  * hasFragment conjunction that combines a glyph check with a read() call,
  * is genuinely owned by the accessor rather than by TaskParser, and stays
- * covered by tests/unit/marker-accessor.test.ts, which already exercises it
- * to a full mutation score without this suite's help.
+ * covered by tests/unit/marker-accessor.test.ts.
  *
  * All corpus lines are enumerated deterministically from a fixed seed list
  * (no randomness, no time dependent input) so this suite produces identical

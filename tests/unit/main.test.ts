@@ -119,7 +119,7 @@ function captureCallback(calls: readonly (readonly unknown[])[]): () => void {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyPlugin = any;
 
-describe('TasksAutoDependencyLinker (solitary)', () => {
+describe('TasksAutoDependencyLinker', () => {
 	let order: string[];
 	let plugin: AnyPlugin;
 

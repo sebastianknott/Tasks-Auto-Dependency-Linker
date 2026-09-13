@@ -3,14 +3,9 @@ import { IndentConfigReader } from '../../src/obsidian/indent-config-reader';
 import type { Vault } from 'obsidian';
 
 /**
- * Solitary unit test for IndentConfigReader.
- *
- * The only collaborator is the vault's undeclared `getConfig` surface.
- * `Vault` itself does not expose `getConfig` in Obsidian's published
- * typings, which is exactly why the production class casts internally.
- * The stub here mirrors that shape rather than the real Obsidian `Vault`,
- * driven by an explicit per-test settings map, so the test cannot end up
- * pinning any behaviour beyond the two lookups this class makes.
+ * `Vault` does not expose `getConfig` in Obsidian's published typings, which
+ * is why the production class casts internally. The stub here mirrors that
+ * cast rather than the real Obsidian `Vault`.
  */
 
 function createFakeVault(config: Record<string, unknown>): {

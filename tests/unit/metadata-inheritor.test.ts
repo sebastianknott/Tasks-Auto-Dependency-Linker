@@ -4,19 +4,6 @@ import { MarkerType } from '../../src/parsing/marker-accessor';
 import type { MarkerAccessorRegistry } from '../../src/parsing/marker-accessor';
 import type { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
 
-/**
- * Solitary unit tests for MetadataInheritor.
- *
- * The subject only ever calls four members on each accessor it is handed
- * (`hasFragment`, `read`, `apply`, `type`) and two members on the sync
- * cache (`get`, `set`). Building the real MarkerAccessorRegistry would
- * drag in TaskParser and TaskMetadataParser, and building the real
- * MetadataSyncCache would drag in RelationshipAnalyzer on top of those,
- * pinning five collaborators the subject does not own. Fake accessors
- * and a plain sync-cache stub let each test state exactly what a
- * collaborator returns, without reimplementing any of their parsing.
- */
-
 type AccessorStub = {
 	type: MarkerType;
 	read: ReturnType<typeof vi.fn>;
