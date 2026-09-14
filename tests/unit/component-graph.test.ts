@@ -43,6 +43,10 @@ describe('ComponentGraph', () => {
 		const second = new ComponentGraph(vault, { useTab: true, tabSize: 4 });
 
 		expect(first.idCache).not.toBe(second.idCache);
+		expect(first.depCache).not.toBe(second.depCache);
+		expect(first.syncCache).not.toBe(second.syncCache);
+		expect(first.coordinator).not.toBe(second.coordinator);
 		expect(first.arbiter).not.toBe(second.arbiter);
+		expect(first.processor).not.toBe(second.processor);
 	});
 });
