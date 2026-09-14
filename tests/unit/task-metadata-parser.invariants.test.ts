@@ -12,20 +12,14 @@ import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
  * that facade. Naming TaskMetadataParser as the subject and calling it
  * directly makes the pinning honest.
  *
- * The accessor-level behaviour these laws used to share a file with, the
- * hasFragment conjunction that combines a glyph check with a read() call,
- * is genuinely owned by the accessor rather than by TaskMetadataParser, and
- * stays covered by tests/unit/marker-accessor.test.ts.
+ * The hasFragment conjunction that combines a glyph check with a read()
+ * call is owned by the accessor rather than by TaskMetadataParser, and is
+ * covered by tests/unit/marker-accessor.test.ts.
  *
  * All corpus lines are enumerated deterministically from a fixed seed list
  * (no randomness, no time dependent input) so this suite produces identical
  * results on every run, including every run StrykerJS performs while
  * mutating src/.
- *
- * This file was split out of the former
- * tests/unit/marker-accessor.invariants.test.ts. The id and dependency
- * properties now live in tests/unit/task-parser.invariants.test.ts, driven
- * directly against TaskParser.
  */
 
 // Seed lines chosen to cover every marker shape relevant to due, scheduled

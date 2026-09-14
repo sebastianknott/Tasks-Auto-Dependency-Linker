@@ -3,37 +3,25 @@ import type { MarkerAccessorRegistry } from '../../src/parsing/marker-accessor';
 import { LineSnapshotStore } from '../../src/editing/line-snapshot-store';
 
 /**
- * Property suite for LineSnapshotStore.computeBareText, built from a design
- * review of LineWriteArbiter. The historical bug this suite targets: an
- * earlier version of computeBareText left a stray bare dependency glyph in
- * the bare text, which broke the arbiter's snapshot comparison gate and let
- * the plugin restore a dependency the user had just deleted. That specific
- * glyph (dependency, U+26D4) now has a dedicated unconditional cleanup step
- * in computeBareText and is covered here as a fully closed invariant. This
- * suite also probes the analogous cases for the other marker glyphs.
+ * Property suite for LineSnapshotStore.computeBareText. A stray marker glyph
+ * left in the bare text breaks the arbiter's snapshot comparison gate and
+ * lets the plugin restore a marker the user just deleted, so every glyph
+ * getting stripped is the invariant these properties pin.
  *
- * LineSnapshotStore is the subject here, so the registry it depends on is a
- * stub, not the real MarkerAccessorRegistry. computeBareText's own catch-all
- * regexes are what these properties exercise: the stub's single-value
- * accessors are passthroughs (remove returns its input unchanged), except
- * for the priority accessor, since computeBareText has no catch-all fallback
- * for the priority glyph (a priority glyph is a single code point and can
- * never be left as a partial fragment, so remove() alone is always
- * responsible for it). The stub dependency accessor never reports an id, so
- * every property below is driven purely by computeBareText's own glyph
- * catch-alls, not by any reimplementation of the accessors' marker regexes.
- * Basic well-formed-marker stripping (real registry, real removal) is
- * already covered by tests/unit/line-snapshot-store.test.ts.
+ * The stub's single-value accessors are passthroughs (remove returns its
+ * input unchanged), except for the priority accessor, since computeBareText
+ * has no catch-all fallback for the priority glyph (a priority glyph is a
+ * single code point and can never be left as a partial fragment, so remove()
+ * alone is always responsible for it). The stub dependency accessor never
+ * reports an id. Every property below is therefore driven purely by
+ * computeBareText's own glyph catch-alls, not by any reimplementation of the
+ * accessors' marker regexes. Stripping via the accessors is covered by
+ * tests/unit/line-snapshot-store.test.ts.
  *
  * All corpus lines are enumerated deterministically from a fixed seed list
  * (no randomness, no time dependent input) so this suite produces identical
  * results on every run, including every run StrykerJS performs while
  * mutating src/.
- *
- * This file was split out of the former tests/unit/marker-invariants.test.ts,
- * which mixed registry-law and LineSnapshotStore-law properties in one file.
- * The registry properties now live in
- * tests/unit/marker-accessor.invariants.test.ts, driven directly (no stub).
  */
 
 // Seed lines chosen to cover every marker shape relevant to LineWriteArbiter's invariants:
@@ -70,17 +58,16 @@ function singleCharDeletions(seed: string): string[] {
 // Full pure-function corpus: every seed, every progressive truncation of every
 // seed, and every single-character deletion of every seed, deduplicated. This
 // corpus is cheap to run (pure functions, no editor simulation), so it uses
-// the widest enumeration the task allows rather than truncation-only.
+// the widest enumeration available rather than truncation-only.
 const CORPUS: readonly string[] = Array.from(
 	new Set(SEEDS.flatMap((seed) => [seed, ...truncations(seed), ...singleCharDeletions(seed)])),
 );
 
 // Every glyph this suite looks for is written out here as a literal, never read
-// back from TaskMetadataParser. Deriving them from the production class made
-// this suite kill 7 mutants inside task-metadata-parser.ts, which is the
-// leakage the section 4.5 probe exists to catch: a change to the parser's glyph
-// table would have failed a LineSnapshotStore test. If the parser ever grows a
-// glyph, the integration suite is what catches the divergence.
+// back from TaskMetadataParser. Deriving them from the production class moves
+// coverage out of the parser's own suite: a change to the parser's glyph table
+// would then fail a LineSnapshotStore test. If the parser ever grows a glyph,
+// the integration suite is what catches the divergence.
 const ID_GLYPH = '\u{1F194}';
 const DEP_GLYPH = '\u26D4';
 const DUE_GLYPHS = '[\\u{1F4C5}\\u{1F4C6}\\u{1F5D3}]';
@@ -146,9 +133,9 @@ describe('LineSnapshotStore.computeBareText never throws', () => {
 });
 
 describe('LineSnapshotStore.computeBareText glyph absence', () => {
-	// The dependency glyph has a dedicated, unconditional cleanup step in computeBareText
-	// (the fix for the historical bug this whole suite is named after), so it must never
-	// leak into bare text, with no exception, for any corpus line.
+	// The dependency glyph has a dedicated, unconditional cleanup step in
+	// computeBareText, so it must never leak into bare text, with no
+	// exception, for any corpus line.
 	it('never contains the dependency glyph', () => {
 		for (const line of CORPUS) {
 			expect(store.computeBareText(line)).not.toContain(DEP_GLYPH);

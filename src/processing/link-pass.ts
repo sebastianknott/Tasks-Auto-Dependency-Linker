@@ -30,8 +30,7 @@ export class LinkPass {
 	 * {@link LineWriteArbiter.blocksIdMinting}). A suppressed id that is
 	 * merely a *different* value, not absent (the user renamed it by
 	 * hand), must still run through `processLine` normally so the
-	 * id-rename cascades onto the parent's `⛔` the same way it always
-	 * has.
+	 * id-rename cascades onto the parent's `⛔`.
 	 *
 	 * @param editor - The editor to link, already wrapped by the arbiter.
 	 * @returns Every editor line as it stands after linking.

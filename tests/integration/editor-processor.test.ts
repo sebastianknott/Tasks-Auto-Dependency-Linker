@@ -642,20 +642,18 @@ describe('EditorProcessor', () => {
 	});
 });
 
-// Hardening suite from a design review of LineWriteArbiter. This is the higher-value
-// integration counterpart to the pure-function invariants in tests/marker-invariants.test.ts:
-// it runs a full EditorProcessor.processAllLines pass, with the cursor sitting on a line mid
-// character-by-character deletion, and checks the exact class of corruption that the
-// historical computeBareText bug produced (a restored dependency plus a corrupted document).
+// Hardening suite for LineWriteArbiter. It runs a full
+// EditorProcessor.processAllLines pass with the cursor sitting on a line mid
+// character-by-character deletion, and checks for the class of corruption a
+// leaky bare-text comparison produces: a restored dependency plus a corrupted
+// document.
 //
-// The corpus here deliberately reuses the same seed lines as tests/marker-invariants.test.ts,
-// duplicated locally rather than imported, since cross-test-file corpus sharing is not an
-// existing pattern in this codebase and the corpus is small. Only progressive truncation is
-// used here (not every single-character deletion), because this pass drives the full
-// EditorProcessor pipeline instead of a pure function; truncation alone already produced zero
-// runtime pressure in measurement, so the smaller corpus was a deliberate, documented choice
-// rather than a necessity, kept to bound the corpus in case the processor pipeline changes
-// later and becomes more expensive.
+// The corpus is a local copy of the seed lines the property suites use, since
+// cross-test-file corpus sharing is not an existing pattern in this codebase
+// and the corpus is small. Only progressive truncation is used here (not every
+// single-character deletion), because this pass drives the full EditorProcessor
+// pipeline instead of a pure function, and the smaller corpus bounds the cost
+// if that pipeline grows more expensive.
 describe('EditorProcessor.processAllLines deletion fuzz (LineWriteArbiter hardening)', () => {
 	const FUZZ_SEEDS: readonly string[] = [
 		'- [ ] Task \u{1F194} abc123',
