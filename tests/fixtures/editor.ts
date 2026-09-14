@@ -1,8 +1,7 @@
 /**
  * Shared editor fixtures for the test suite.
  *
- * Six test files used to carry their own near-identical editor mock. These
- * builders replace them. They deliberately expose two separate shapes,
+ * These builders deliberately expose two separate shapes,
  * {@link LineEditorFixture} and {@link EditorFixture}, mirroring the
  * {@link LineEditor} and `EditorLike` ports in `src/types.ts`. A test
  * that only needs line access gets an object without `getCursor`, so a

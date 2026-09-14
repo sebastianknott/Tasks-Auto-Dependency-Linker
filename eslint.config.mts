@@ -151,7 +151,9 @@ export default tseslint.config(
 		"main.js",
 		"reports",
 		"stryker.config.mjs",
+		"stryker.unit.mjs",
 		"vitest.config.ts",
+		"vitest.unit.config.ts",
 		".stryker-tmp",
 	]),
 );

@@ -201,10 +201,6 @@ describe('TaskMetadataParser', () => {
 			// captures exactly one of them as the marker's own separator;
 			// the other two are unrelated whitespace the user typed (e.g.
 			// a Markdown hard line break in progress) and must survive.
-			// This was previously asserted to collapse to zero spaces,
-			// which encoded the bug this fix corrects: a full trimEnd()
-			// consumed whitespace far beyond the single separator the
-			// marker's own regex matched.
 			expect(parser.removeDueDate('- [ ] Task   \u{1F4C5} 2025-01-01')).toBe(
 				'- [ ] Task  ',
 			);
@@ -264,10 +260,6 @@ describe('TaskMetadataParser', () => {
 			// captures exactly one of them as the marker's own separator;
 			// the other two are unrelated whitespace the user typed (e.g.
 			// a Markdown hard line break in progress) and must survive.
-			// This was previously asserted to collapse to zero spaces,
-			// which encoded the bug this fix corrects: a full trimEnd()
-			// consumed whitespace far beyond the single separator the
-			// marker's own regex matched.
 			expect(parser.removeScheduledDate('- [ ] Task   \u{23F3} 2025-01-01')).toBe(
 				'- [ ] Task  ',
 			);
@@ -318,12 +310,6 @@ describe('TaskMetadataParser', () => {
 			// captures exactly one of them as the marker's own separator;
 			// the other two are unrelated whitespace the user typed (e.g.
 			// a Markdown hard line break in progress) and must survive.
-			// This was previously asserted to collapse to zero spaces,
-			// which encoded the bug this fix corrects: a full trimEnd()
-			// consumed whitespace far beyond the single separator the
-			// marker's own regex matched. This is the exact class of bug
-			// the user reported: a priority glyph's own removal eating a
-			// trailing space it never touched.
 			expect(parser.removePriority('- [ ] Task   \u{23EB}')).toBe('- [ ] Task  ');
 		});
 

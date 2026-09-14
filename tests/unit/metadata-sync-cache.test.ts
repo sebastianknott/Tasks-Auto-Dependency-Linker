@@ -1,31 +1,74 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MetadataSyncCache } from '../../src/cache/metadata-sync-cache';
-import { TaskParser } from '../../src/parsing/task-parser';
-import { TaskMetadataParser } from '../../src/parsing/task-metadata-parser';
-import { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
+import type { TaskParser } from '../../src/parsing/task-parser';
+import type { TaskMetadataParser, Priority } from '../../src/parsing/task-metadata-parser';
+import type { RelationshipAnalyzer } from '../../src/parsing/relationship-analyzer';
+
+function createParserStub(idsByLine: Map<string, string | null>): TaskParser {
+	return {
+		getTaskId: vi.fn((line: string) => idsByLine.get(line) ?? null),
+	} as unknown as TaskParser;
+}
+
+function createMetadataParserStub(
+	dueByLine: Map<string, string | null>,
+	scheduledByLine: Map<string, string | null>,
+	priorityByLine: Map<string, Priority | null>,
+): TaskMetadataParser {
+	return {
+		getDueDate: vi.fn((line: string) => dueByLine.get(line) ?? null),
+		getScheduledDate: vi.fn((line: string) => scheduledByLine.get(line) ?? null),
+		getPriority: vi.fn((line: string) => priorityByLine.get(line) ?? null),
+	} as unknown as TaskMetadataParser;
+}
+
+function createRelAnalyzerStub(
+	relationshipsByContent: Map<string, Map<number, number>>,
+): RelationshipAnalyzer {
+	return {
+		buildRelationshipMap: vi.fn((lines: string[]) =>
+			relationshipsByContent.get(lines.join('\n')) ?? new Map<number, number>(),
+		),
+	} as unknown as RelationshipAnalyzer;
+}
+
+function createEmptyCache(): MetadataSyncCache {
+	return new MetadataSyncCache(
+		createParserStub(new Map()),
+		createMetadataParserStub(new Map(), new Map(), new Map()),
+		createRelAnalyzerStub(new Map()),
+	);
+}
 
 describe('MetadataSyncCache', () => {
-	let cache: MetadataSyncCache;
-
-	beforeEach(() => {
-		const parser = new TaskParser();
-		const metadataParser = new TaskMetadataParser();
-		const relAnalyzer = new RelationshipAnalyzer(parser);
-		cache = new MetadataSyncCache(parser, metadataParser, relAnalyzer);
-	});
-
 	describe('get', () => {
 		it('returns undefined for an unknown child id', () => {
+			const cache = createEmptyCache();
 			expect(cache.get('unknown')).toBeUndefined();
 		});
 	});
 
 	describe('buildFromFiles', () => {
 		it("records the parent's value for a field the child already shares", () => {
-			const content = [
-				'- [ ] Parent \u{1F4C5} 2025-01-01 \u{23F3} 2025-02-02 \u{1F53A}',
-				'\t- [ ] Child \u{1F194} childid \u{1F4C5} 2025-01-01 \u{23F3} 2025-02-02 \u{1F53A}',
-			].join('\n');
+			const content = 'parent-line\nchild-line';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-line', 'childid']])),
+				createMetadataParserStub(
+					new Map([
+						['parent-line', '2025-01-01'],
+						['child-line', 'existing-due'],
+					]),
+					new Map([
+						['parent-line', '2025-02-02'],
+						['child-line', 'existing-scheduled'],
+					]),
+					new Map<string, Priority | null>([
+						['parent-line', 'highest'],
+						['child-line', 'low'],
+					]),
+				),
+				createRelAnalyzerStub(new Map([[content, new Map([[1, 0]])]])),
+			);
 			cache.buildFromFiles([{ path: 'a.md', content }]);
 			expect(cache.get('childid')).toEqual({
 				due: '2025-01-01',
@@ -34,15 +77,26 @@ describe('MetadataSyncCache', () => {
 			});
 		});
 
-		it("records null for a field the child does not yet hold, even when the parent has it", () => {
-			// Regression: a child indented under a parent that had no metadata
-			// must keep a null last-synced value so a metadata the parent gains
-			// LATER still propagates. Seeding the parent's value here would make
-			// the inheritor believe the child already received it.
-			const content = [
-				'- [ ] Parent \u{23F3} 2025-02-02',
-				'\t- [ ] Child \u{1F194} childid',
-			].join('\n');
+		it('records null for a field the child does not yet hold, even when the parent has it', () => {
+			const content = 'parent-line\nchild-line';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-line', 'childid']])),
+				createMetadataParserStub(
+					new Map([
+						['parent-line', '2025-05-05'],
+						['child-line', null],
+					]),
+					new Map([
+						['parent-line', '2025-06-06'],
+						['child-line', null],
+					]),
+					new Map<string, Priority | null>([
+						['parent-line', 'medium'],
+						['child-line', null],
+					]),
+				),
+				createRelAnalyzerStub(new Map([[content, new Map([[1, 0]])]])),
+			);
 			cache.buildFromFiles([{ path: 'a.md', content }]);
 			expect(cache.get('childid')).toEqual({
 				due: null,
@@ -52,8 +106,11 @@ describe('MetadataSyncCache', () => {
 		});
 
 		it('seeds null fields when the parent has no metadata', () => {
-			const content = ['- [ ] Parent', '\t- [ ] Child \u{1F194} childid'].join(
-				'\n',
+			const content = 'parent-line\nchild-line';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-line', 'childid']])),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(new Map([[content, new Map([[1, 0]])]])),
 			);
 			cache.buildFromFiles([{ path: 'a.md', content }]);
 			expect(cache.get('childid')).toEqual({
@@ -64,36 +121,65 @@ describe('MetadataSyncCache', () => {
 		});
 
 		it('ignores children that have no id', () => {
-			const content = ['- [ ] Parent \u{1F4C5} 2025-01-01', '\t- [ ] Child'].join(
-				'\n',
+			const content = 'parent-line\nchild-line';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-line', null]])),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(new Map([[content, new Map([[1, 0]])]])),
 			);
 			cache.buildFromFiles([{ path: 'a.md', content }]);
 			expect(cache.get('childid')).toBeUndefined();
 		});
 
 		it('clears previous entries when rebuilding', () => {
-			cache.buildFromFiles([
-				{
-					path: 'a.md',
-					content: '- [ ] Parent \u{1F4C5} 2025-01-01\n\t- [ ] Child \u{1F194} childid',
-				},
-			]);
-			cache.buildFromFiles([{ path: 'b.md', content: '- [ ] Lonely' }]);
+			const contentA = 'parent-a\nchild-a';
+			const contentB = 'lonely-line';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-a', 'childid']])),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(
+					new Map([
+						[contentA, new Map([[1, 0]])],
+						[contentB, new Map<number, number>()],
+					]),
+				),
+			);
+			cache.buildFromFiles([{ path: 'a.md', content: contentA }]);
+			cache.buildFromFiles([{ path: 'b.md', content: contentB }]);
 			expect(cache.get('childid')).toBeUndefined();
 		});
 
 		it('seeds records across multiple files', () => {
+			const contentA = 'parent-a\nchild-a';
+			const contentB = 'parent-b\nchild-b';
+			const cache = new MetadataSyncCache(
+				createParserStub(
+					new Map([
+						['child-a', 'aaa'],
+						['child-b', 'bbb'],
+					]),
+				),
+				createMetadataParserStub(
+					new Map([
+						['parent-a', '2025-01-01'],
+						['child-a', 'existing-due'],
+					]),
+					new Map([
+						['parent-b', '2025-03-03'],
+						['child-b', 'existing-scheduled'],
+					]),
+					new Map(),
+				),
+				createRelAnalyzerStub(
+					new Map([
+						[contentA, new Map([[1, 0]])],
+						[contentB, new Map([[1, 0]])],
+					]),
+				),
+			);
 			cache.buildFromFiles([
-				{
-					path: 'a.md',
-					content:
-						'- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa \u{1F4C5} 2025-01-01',
-				},
-				{
-					path: 'b.md',
-					content:
-						'- [ ] P \u{23F3} 2025-03-03\n\t- [ ] C \u{1F194} bbb \u{23F3} 2025-03-03',
-				},
+				{ path: 'a.md', content: contentA },
+				{ path: 'b.md', content: contentB },
 			]);
 			expect(cache.get('aaa')?.due).toBe('2025-01-01');
 			expect(cache.get('bbb')?.scheduled).toBe('2025-03-03');
@@ -102,51 +188,80 @@ describe('MetadataSyncCache', () => {
 
 	describe('updateForFile', () => {
 		it('reseeds a single file without touching other files', () => {
-			cache.buildFromFiles([
-				{
-					path: 'a.md',
-					content:
-						'- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa \u{1F4C5} 2025-01-01',
-				},
-				{
-					path: 'b.md',
-					content:
-						'- [ ] P \u{1F4C5} 2025-02-02\n\t- [ ] C \u{1F194} bbb \u{1F4C5} 2025-02-02',
-				},
-			]);
-			cache.updateForFile(
-				'a.md',
-				'- [ ] P \u{1F4C5} 2025-09-09\n\t- [ ] C \u{1F194} aaa \u{1F4C5} 2025-09-09',
+			const contentA1 = 'parent-a1\nchild-a1';
+			const contentA2 = 'parent-a2\nchild-a2';
+			const contentB = 'parent-b\nchild-b';
+			const cache = new MetadataSyncCache(
+				createParserStub(
+					new Map([
+						['child-a1', 'aaa'],
+						['child-a2', 'aaa'],
+						['child-b', 'bbb'],
+					]),
+				),
+				createMetadataParserStub(
+					new Map([
+						['parent-a1', '2025-01-01'],
+						['child-a1', 'existing-due'],
+						['parent-a2', '2025-09-09'],
+						['child-a2', 'existing-due'],
+						['parent-b', '2025-02-02'],
+						['child-b', 'existing-due'],
+					]),
+					new Map(),
+					new Map(),
+				),
+				createRelAnalyzerStub(
+					new Map([
+						[contentA1, new Map([[1, 0]])],
+						[contentA2, new Map([[1, 0]])],
+						[contentB, new Map([[1, 0]])],
+					]),
+				),
 			);
+			cache.buildFromFiles([
+				{ path: 'a.md', content: contentA1 },
+				{ path: 'b.md', content: contentB },
+			]);
+			cache.updateForFile('a.md', contentA2);
 			expect(cache.get('aaa')?.due).toBe('2025-09-09');
 			expect(cache.get('bbb')?.due).toBe('2025-02-02');
 		});
 
 		it('prunes a child that is no longer present in the file', () => {
-			cache.buildFromFiles([
-				{
-					path: 'a.md',
-					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
-				},
-			]);
-			cache.updateForFile('a.md', '- [ ] P \u{1F4C5} 2025-01-01');
+			const contentA1 = 'parent-a1\nchild-a1';
+			const contentA2 = 'parent-a2-only';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-a1', 'aaa']])),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(
+					new Map([
+						[contentA1, new Map([[1, 0]])],
+						[contentA2, new Map<number, number>()],
+					]),
+				),
+			);
+			cache.buildFromFiles([{ path: 'a.md', content: contentA1 }]);
+			cache.updateForFile('a.md', contentA2);
 			expect(cache.get('aaa')).toBeUndefined();
 		});
 	});
 
 	describe('set', () => {
 		it('records a freshly propagated value for one field', () => {
-			cache.buildFromFiles([
-				{
-					path: 'a.md',
-					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
-				},
-			]);
+			const content = 'parent-a\nchild-a';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-a', 'aaa']])),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(new Map([[content, new Map([[1, 0]])]])),
+			);
+			cache.buildFromFiles([{ path: 'a.md', content }]);
 			cache.set('aaa', 'due', '2025-12-12');
 			expect(cache.get('aaa')?.due).toBe('2025-12-12');
 		});
 
 		it('creates a record when the child id is not yet known', () => {
+			const cache = createEmptyCache();
 			cache.set('fresh', 'priority', 'low');
 			expect(cache.get('fresh')).toEqual({
 				due: null,
@@ -158,30 +273,42 @@ describe('MetadataSyncCache', () => {
 
 	describe('pruneFile', () => {
 		it('drops the exact path', () => {
-			cache.buildFromFiles([
-				{
-					path: 'a.md',
-					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
-				},
-			]);
+			const content = 'parent-a\nchild-a';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-a', 'aaa']])),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(new Map([[content, new Map([[1, 0]])]])),
+			);
+			cache.buildFromFiles([{ path: 'a.md', content }]);
 			cache.pruneFile('a.md');
 			expect(cache.get('aaa')).toBeUndefined();
 		});
 
 		it('drops descendants under path + "/"', () => {
+			const contentA = 'parent-notes-a\nchild-notes-a';
+			const contentB = 'parent-notes-sub-b\nchild-notes-sub-b';
+			const contentC = 'parent-other\nchild-other';
+			const cache = new MetadataSyncCache(
+				createParserStub(
+					new Map([
+						['child-notes-a', 'aaa'],
+						['child-notes-sub-b', 'bbb'],
+						['child-other', 'ccc'],
+					]),
+				),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(
+					new Map([
+						[contentA, new Map([[1, 0]])],
+						[contentB, new Map([[1, 0]])],
+						[contentC, new Map([[1, 0]])],
+					]),
+				),
+			);
 			cache.buildFromFiles([
-				{
-					path: 'notes/a.md',
-					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
-				},
-				{
-					path: 'notes/sub/b.md',
-					content: '- [ ] P \u{1F4C5} 2025-02-02\n\t- [ ] C \u{1F194} bbb',
-				},
-				{
-					path: 'other.md',
-					content: '- [ ] P \u{1F4C5} 2025-03-03\n\t- [ ] C \u{1F194} ccc',
-				},
+				{ path: 'notes/a.md', content: contentA },
+				{ path: 'notes/sub/b.md', content: contentB },
+				{ path: 'other.md', content: contentC },
 			]);
 			cache.pruneFile('notes');
 			expect(cache.get('aaa')).toBeUndefined();
@@ -190,23 +317,25 @@ describe('MetadataSyncCache', () => {
 		});
 
 		it('leaves a sibling path with the same prefix but no separator alone', () => {
-			cache.buildFromFiles([
-				{
-					path: 'notes-archive.md',
-					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
-				},
-			]);
+			const content = 'parent-a\nchild-a';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-a', 'aaa']])),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(new Map([[content, new Map([[1, 0]])]])),
+			);
+			cache.buildFromFiles([{ path: 'notes-archive.md', content }]);
 			cache.pruneFile('notes');
 			expect(cache.get('aaa')).toBeDefined();
 		});
 
 		it('is a no-op when the path is not present', () => {
-			cache.buildFromFiles([
-				{
-					path: 'a.md',
-					content: '- [ ] P \u{1F4C5} 2025-01-01\n\t- [ ] C \u{1F194} aaa',
-				},
-			]);
+			const content = 'parent-a\nchild-a';
+			const cache = new MetadataSyncCache(
+				createParserStub(new Map([['child-a', 'aaa']])),
+				createMetadataParserStub(new Map(), new Map(), new Map()),
+				createRelAnalyzerStub(new Map([[content, new Map([[1, 0]])]])),
+			);
+			cache.buildFromFiles([{ path: 'a.md', content }]);
 			cache.pruneFile('nonexistent.md');
 			expect(cache.get('aaa')).toBeDefined();
 		});
